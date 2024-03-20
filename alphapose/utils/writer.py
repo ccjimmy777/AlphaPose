@@ -24,10 +24,11 @@ EVAL_JOINTS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 class DataWriter():
     def __init__(self, cfg, opt, save_video=False,
                  video_save_opt=DEFAULT_VIDEO_SAVE_OPT,
-                 queueSize=1024):
+                 queueSize=1024, seq_name=''):
         self.cfg = cfg
         self.opt = opt
         self.video_save_opt = video_save_opt
+        self.seq_name = seq_name
 
         self.eval_joints = EVAL_JOINTS
         self.save_video = save_video
@@ -40,8 +41,9 @@ class DataWriter():
             self.result_queue = mp.Queue(maxsize=queueSize)
 
         if opt.save_img:
-            if not os.path.exists(opt.outputpath + '/vis'):
-                os.mkdir(opt.outputpath + '/vis')
+            self.save_img_dir = os.path.join(self.opt.outputpath, 'vis', seq_name)
+            if not os.path.exists(self.save_img_dir):
+                os.mkdir(self.save_img_dir)
 
         if opt.pose_flow:
             from trackers.PoseFlow.poseflow_infer import PoseFlowWrapper
@@ -78,6 +80,7 @@ class DataWriter():
         return self
 
     def update(self):
+        final_result_posetrack18 = []
         final_result = []
         norm_type = self.cfg.LOSS.get('NORM_TYPE', None)
         hm_size = self.cfg.DATA_PRESET.HEATMAP_SIZE
@@ -100,7 +103,11 @@ class DataWriter():
                 # if the thread indicator variable is set (img is None), stop the thread
                 if self.save_video:
                     stream.release()
-                write_json(final_result, self.opt.outputpath, form=self.opt.format, for_eval=self.opt.eval)
+                
+                outputfile = 'alphapose-results.json'
+                if self.seq_name != '':
+                    outputfile = self.seq_name + '.json'
+                write_json(final_result, self.opt.outputpath, form=self.opt.format, for_eval=self.opt.eval, outputfile=outputfile)
                 print("Results have been written to json.")
                 return
             # image channel RGB->BGR
@@ -184,7 +191,7 @@ class DataWriter():
             cv2.imshow("AlphaPose Demo", img)
             cv2.waitKey(30)
         if self.opt.save_img:
-            cv2.imwrite(os.path.join(self.opt.outputpath, 'vis', im_name), img)
+            cv2.imwrite(os.path.join(self.save_img_dir, im_name), img)
         if self.save_video:
             stream.write(img)
 
@@ -229,7 +236,8 @@ class DataWriter():
 
     def recognize_video_ext(self, ext=''):
         if ext == 'mp4':
-            return cv2.VideoWriter_fourcc(*'mp4v'), '.' + ext
+            # return cv2.VideoWriter_fourcc(*'mp4v'), '.' + ext
+            return cv2.VideoWriter_fourcc(*'avc1'), '.' + ext
         elif ext == 'avi':
             return cv2.VideoWriter_fourcc(*'XVID'), '.' + ext
         elif ext == 'mov':

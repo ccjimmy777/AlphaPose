@@ -9,6 +9,8 @@ from collections import defaultdict
 import torch
 import numpy as np
 
+from mmengine.fileio import dump, load
+
 ''' Constant Configuration '''
 delta1 = 1
 mu = 1.7
@@ -655,12 +657,81 @@ def PCK_match_fullbody(pick_pred, pred_score, all_preds, ref_dist):
     num_match_keypoints = (num_match_keypoints_body + num_match_keypoints_face + num_match_keypoints_hand) / mask.sum() / 2 * kp_nums
     return num_match_keypoints
 
+def write_json_posetrack18(all_results, outputpath, outputfile):
+    categories = []
+    annotations = []
+    images = []
+
+    cat = {}
+    cat['supercategory'] = 'person'
+    cat['id'] = 1
+    cat['name'] = 'person'
+    cat['keypoints'] = [
+        'nose', 'head_bottom', 'head_top', 'left_ear', 'right_ear',
+        'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+        'left_wrist', 'right_wrist', 'left_hip', 'right_hip', 'left_knee',
+        'right_knee', 'left_ankle', 'right_ankle'
+    ]
+    cat['skeleton'] = [[16, 14], [14, 12], [17, 15], [15, 13], [12, 13],
+                    [6, 12], [7, 13], [6, 7], [6, 8], [7, 9], [8, 10],
+                    [9, 11], [2, 3], [1, 2], [1, 3], [2, 4], [3, 5],
+                    [4, 6], [5, 7]]
+    categories.append(cat)
+
+    gt_folder = '/mnt/d/data/posetrack18/annotations/val/'
+    gt = load(os.path.join(gt_folder, outputfile))
+
+    # images_id = []
+    for im_res in all_results:
+        im_name = im_res['imgname']
+        im_name_index = int(os.path.basename(im_name).split('.')[0].split('_')[-1])  # int() 去掉前导零
+        img = {}
+        img['id'] = gt['images'][im_name_index]['id']
+        img['file_name'] = gt['images'][im_name_index]['file_name']
+        # if img['id'] not in images_id:
+        #     images.append(img)
+        #     images_id.append(img['id'])
+        images.append(img)
+
+        for human in im_res['result']:
+            ann = {}
+            ann['image_id'] = img['id']
+
+            kp_preds = human['keypoints']
+            kp_scores = human['kp_score']
+            pro_scores = human['proposal_score']
+            keypoints = []
+            for n in range(kp_scores.shape[0]):
+                keypoints.append(float(kp_preds[n, 0]))
+                keypoints.append(float(kp_preds[n, 1]))
+                keypoints.append(float(kp_scores[n]))
+            ann['keypoints'] = keypoints
+            ann['scores'] = np.array(kp_scores).reshape(-1).tolist()
+            ann['score'] = float(pro_scores)
+            if 'idx' in human.keys():
+                ann['track_id'] = human['idx']
+            
+            annotations.append(ann)
+
+    info = {}
+    info['images'] = images
+    info['categories'] = categories
+    info['annotations'] = annotations
+
+    # with open(os.path.join(outputpath, outputfile), 'w') as json_file:
+    #     json_file.write(json.dumps(info))
+    pred_file = os.path.join(outputpath, outputfile)
+    dump(info, pred_file, sort_keys=True, indent=4)
 
 def write_json(all_results, outputpath, form=None, for_eval=False, outputfile='alphapose-results.json'):
     '''
     all_result: result dict of predictions
     outputpath: output directory
     '''
+
+    if for_eval:
+        write_json_posetrack18(all_results, outputpath, outputfile)
+
     json_results = []
     json_results_cmu = {}
     for im_res in all_results:
@@ -745,8 +816,9 @@ def write_json(all_results, outputpath, form=None, for_eval=False, outputfile='a
                 with open(os.path.join(outputpath,'sep-json',name.split('.')[0]+'.json'),'w') as json_file:
                     json_file.write(json.dumps(json_results_cmu[name]))
     else:
-        with open(os.path.join(outputpath, outputfile), 'w') as json_file:
-            json_file.write(json.dumps(json_results))
+        pass
+        # with open(os.path.join(outputpath, outputfile), 'w') as json_file:
+            # json_file.write(json.dumps(json_results))
 
 
 def ppose_nms_validate_preprocess(_res):

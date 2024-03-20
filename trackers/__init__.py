@@ -16,5 +16,6 @@ def track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores):
         new_ids.append(tid)
         new_scores.append(tscore)
 
-    new_hm = torch.Tensor(new_hm).to(args.device)
+    # 在转换为张量之前，将列表转换为一个单一的 numpy 数组，然后再进行张量转换
+    new_hm = torch.Tensor(np.array(new_hm)).to(args.device)  
     return new_boxes,new_scores,new_ids,new_hm,new_crop

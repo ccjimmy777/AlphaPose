@@ -57,13 +57,13 @@ parser.add_argument('--min_box_area', type=int, default=0,
                     help='min box area to filter out')
 parser.add_argument('--detbatch', type=int, default=5,
                     help='detection batch size PER GPU')
-parser.add_argument('--posebatch', type=int, default=64,
+parser.add_argument('--posebatch', type=int, default=64,  # 64
                     help='pose estimation maximum batch size PER GPU')
 parser.add_argument('--eval', dest='eval', default=False, action='store_true',
                     help='save the result json as coco format, using image index(int) instead of image name(str)')
 parser.add_argument('--gpus', type=str, dest='gpus', default="0",
                     help='choose which cuda device to use by index and input comma to use multi gpus, e.g. 0,1,2,3. (input -1 for cpu only)')
-parser.add_argument('--qsize', type=int, dest='qsize', default=1024,
+parser.add_argument('--qsize', type=int, dest='qsize', default=32,  # 1024
                     help='the length of result buffer, where reducing it will lower requirement of cpu memory')
 parser.add_argument('--flip', default=False, action='store_true',
                     help='enable flip testing')
@@ -100,7 +100,7 @@ if not args.sp:
     torch.multiprocessing.set_start_method('forkserver', force=True)
     torch.multiprocessing.set_sharing_strategy('file_system')
 
-
+seq_name = ''
 def check_input():
     # for wecam
     if args.webcam != -1:
@@ -135,6 +135,8 @@ def check_input():
             for root, dirs, files in os.walk(inputpath):
                 im_names = files
             im_names = natsort.natsorted(im_names)
+            global seq_name
+            seq_name = inputpath.split('/')[-1]
         elif len(inputimg):
             args.inputpath = os.path.split(inputimg)[0]
             im_names = [os.path.split(inputimg)[1]]
@@ -162,8 +164,13 @@ def loop():
 if __name__ == "__main__":
     mode, input_source = check_input()
 
+    # args.outputpath = os.path.join(args.outputpath, seq_name)
     if not os.path.exists(args.outputpath):
         os.makedirs(args.outputpath)
+
+    seq_result_path = os.path.join(args.outputpath, seq_name + '.json')
+    if os.path.exists(seq_result_path):
+        sys.exit()
 
     # Load detection loader
     if mode == 'webcam':
@@ -207,7 +214,7 @@ if __name__ == "__main__":
         video_save_opt.update(det_loader.videoinfo)
         writer = DataWriter(cfg, args, save_video=True, video_save_opt=video_save_opt, queueSize=queueSize).start()
     else:
-        writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize).start()
+        writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize, seq_name=seq_name).start()
 
     if mode == 'webcam':
         print('Starting webcam demo, press Ctrl + C to terminate...')
