@@ -104,7 +104,7 @@ class DataWriter():
                 if self.save_video:
                     stream.release()
                 
-                outputfile = 'alphapose-results.json'
+                outputfile = 'default-alphapose-results.json'
                 if self.seq_name != '':
                     outputfile = self.seq_name + '.json'
                 write_json(final_result, self.opt.outputpath, form=self.opt.format, for_eval=self.opt.eval, outputfile=outputfile)
