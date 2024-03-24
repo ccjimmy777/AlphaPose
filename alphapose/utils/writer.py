@@ -9,7 +9,8 @@ import torch
 import torch.multiprocessing as mp
 
 from alphapose.utils.transforms import get_func_heatmap_to_coord
-from alphapose.utils.pPose_nms import pose_nms, write_json
+from alphapose.utils.pPose_nms import pose_nms, write_json, write_json_runtime
+from datetime import datetime
 
 DEFAULT_VIDEO_SAVE_OPT = {
     'savepath': 'examples/res/1.mp4',
@@ -28,7 +29,16 @@ class DataWriter():
         self.cfg = cfg
         self.opt = opt
         self.video_save_opt = video_save_opt
+
+        # added by ccj at 24/3/20
         self.seq_name = seq_name
+        self.runtime_profile = {
+            'dt_mean': -1.0,  # detect time
+            'pt_mean': -1.0,  # pose time
+            'pn_mean': -1.0,   # post process time
+            'total_mean': -1.0,
+            'timestamp': datetime.now()
+        }
 
         self.eval_joints = EVAL_JOINTS
         self.save_video = save_video
@@ -43,7 +53,7 @@ class DataWriter():
         if opt.save_img:
             self.save_img_dir = os.path.join(self.opt.outputpath, 'vis', seq_name)
             if not os.path.exists(self.save_img_dir):
-                os.mkdir(self.save_img_dir)
+                os.makedirs(self.save_img_dir)  # makedirs 可创建多级目录
 
         if opt.pose_flow:
             from trackers.PoseFlow.poseflow_infer import PoseFlowWrapper
@@ -80,7 +90,6 @@ class DataWriter():
         return self
 
     def update(self):
-        final_result_posetrack18 = []
         final_result = []
         norm_type = self.cfg.LOSS.get('NORM_TYPE', None)
         hm_size = self.cfg.DATA_PRESET.HEATMAP_SIZE
@@ -204,6 +213,16 @@ class DataWriter():
     def save(self, boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name):
         # save next frame in the queue
         self.wait_and_put(self.result_queue, (boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name))
+
+    def save_profile(self, dt_mean, pt_mean, pn_mean):
+        self.runtime_profile['dt_mean'] = dt_mean
+        self.runtime_profile['pt_mean'] = pt_mean
+        self.runtime_profile['pn_mean'] = pn_mean
+        self.runtime_profile['total_mean'] = dt_mean + pt_mean + pn_mean
+        self.runtime_profile['timestamp'] = datetime.now()
+
+        runtimefile = 'runtime_profile.json'
+        write_json_runtime(self.runtime_profile, self.opt.outputpath, runtimefile, self.seq_name)
 
     def running(self):
         # indicate that the thread is still running

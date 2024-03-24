@@ -23,6 +23,10 @@ from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.writer import DataWriter
 
+from demo_visualization import load_wild_camera_model, clear_abnormal
+from PIL import Image
+from mmengine.fileio import dump, load
+
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Demo')
 parser.add_argument('--cfg', type=str, required=True,
@@ -83,6 +87,9 @@ parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
 parser.add_argument('--pose_track', dest='pose_track',
                     help='track humans in video with reid', action='store_true', default=False)
+"""----------------------------- My work options -----------------------------"""
+parser.add_argument('--focal_est', dest='focal_estimation',
+                    help='use wild camera model for focal estimation', action='store_true', default=False)
 
 args = parser.parse_args()
 cfg = update_config(args.cfg)
@@ -119,7 +126,7 @@ if __name__ == "__main__":
     # Check input
     inputpath = args.inputpath
     if len(inputpath) and inputpath != '/':
-        _, dirs, _ = next(os.walk(inputpath))
+        root, dirs, _ = next(os.walk(inputpath))
         mode = 'image'
     else:
         print('An error occurs on arg "inputpath", please check it')
@@ -147,15 +154,45 @@ if __name__ == "__main__":
     # detector = get_detector(args)
     # detector.load_model()
 
-    for dir in tqdm(dirs, dynamic_ncols=True, desc="val seqs(dirs)"):
+    if len(dirs) > 0:
+        dirs_list = tqdm(dirs, dynamic_ncols=True, desc="val seqs(dirs)") 
+    else:
+        dirs_list = ['']
+    
+    for dir in dirs_list:
         args.inputpath = os.path.join(inputpath, dir)
         _, _, files = next(os.walk(args.inputpath))
         input_source = natsort.natsorted(files)
 
-        seq_name = dir
+        seq_name = dir if dir != '' else root.split('/')[-1]
 
+        # Load wild camera model for focal estimation
+        focal_result_path = os.path.join(args.outputpath, 'focal_estimation', seq_name + '.json')
+        if os.path.exists(focal_result_path):
+            focal = load(focal_result_path)['focal']
+        else:
+            wild_camera_model = load_wild_camera_model()
+            focal_list = []
+            for im_name in tqdm(input_source, dynamic_ncols=True, desc=seq_name+'\'s focal estimation'):
+                intrinsic, _ = wild_camera_model.inference(Image.open(os.path.join(args.inputpath, im_name)), wtassumption=False)
+                focal = intrinsic[0, 0].item()
+                focal_list.append(focal)
+        
+            focal_list_clear, abnormal_indexes = clear_abnormal(focal_list)
+            focal = np.mean(focal_list_clear)
+            focal_info = {}
+            focal_info['focal'] = focal
+            focal_info['focal_list_clear'] = focal_list_clear
+            focal_info['abnormal_indexes'] = abnormal_indexes
+            focal_info['focal_list'] = focal_list
+            dump(focal_info, focal_result_path, sort_keys=True, indent=4)
+
+        if args.focal_estimation:
+            continue
+        
+        # 结果汇总
         seq_result_path = os.path.join(args.outputpath, seq_name + '.json')
-        if os.path.exists(seq_result_path):
+        if os.path.exists(seq_result_path) and len(dirs) > 0:
             continue
 
         # Load detection loader
@@ -163,9 +200,9 @@ if __name__ == "__main__":
         det_worker = det_loader.start()
 
         runtime_profile = {
-            'dt': [],
-            'pt': [],
-            'pn': []
+            'dt': [],  # detect time
+            'pt': [],  # pose time
+            'pn': []   # post process time
         }
 
         # Init data writer
@@ -173,7 +210,7 @@ if __name__ == "__main__":
         writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize, seq_name=seq_name).start()
 
         data_len = det_loader.length
-        im_names_desc = tqdm(range(data_len), dynamic_ncols=True, desc="imgs")
+        im_names_desc = tqdm(range(data_len), dynamic_ncols=True)
 
         batchSize = args.posebatch
         if args.flip:
@@ -182,6 +219,7 @@ if __name__ == "__main__":
             for i in im_names_desc:
                 start_time = getTime()
                 with torch.no_grad():
+                    # i. Detection and data transform (i.e. crop and resize)
                     (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes) = det_loader.read()
                     if orig_img is None:
                         break
@@ -191,7 +229,7 @@ if __name__ == "__main__":
                     if args.profile:
                         ckpt_time, det_time = getTime(start_time)
                         runtime_profile['dt'].append(det_time)
-                    # Pose Estimation
+                    # ii. Pose Estimation
                     inps = inps.to(args.device)
                     datalen = inps.size(0)
                     leftover = 0
@@ -212,6 +250,7 @@ if __name__ == "__main__":
                     if args.profile:
                         ckpt_time, pose_time = getTime(ckpt_time)
                         runtime_profile['pt'].append(pose_time)
+                    # iii. Pose Tracking
                     if args.pose_track:
                         boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores)
                     hm = hm.cpu()
@@ -222,10 +261,16 @@ if __name__ == "__main__":
 
                 if args.profile:
                     # TQDM
+                    dt_mean = np.mean(runtime_profile['dt'])
+                    pt_mean = np.mean(runtime_profile['pt'])
+                    pn_mean = np.mean(runtime_profile['pn'])
                     im_names_desc.set_description(
                         'det time: {dt:.4f} | pose time: {pt:.4f} | post processing: {pn:.4f}'.format(
-                            dt=np.mean(runtime_profile['dt']), pt=np.mean(runtime_profile['pt']), pn=np.mean(runtime_profile['pn']))
+                            dt=dt_mean, pt=pt_mean, pn=pn_mean)
                     )
+
+            if args.profile:
+                writer.save_profile(dt_mean, pt_mean, pn_mean)
             print_finish_info()
             while(writer.running()):
                 time.sleep(1)

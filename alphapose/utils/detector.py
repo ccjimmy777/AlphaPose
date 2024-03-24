@@ -11,6 +11,7 @@ import torch.multiprocessing as mp
 
 from alphapose.utils.presets import SimpleTransform, SimpleTransform3DSMPL
 from alphapose.models import builder
+from third_party.MEBOW.tools import demo_api
 
 class DetectionLoader():
     def __init__(self, input_source, detector, cfg, opt, mode='image', batchSize=1, queueSize=128):
@@ -41,10 +42,10 @@ class DetectionLoader():
             leftover = 1
         self.num_batches = self.datalen // batchSize + leftover
 
-        self._input_size = cfg.DATA_PRESET.IMAGE_SIZE
-        self._output_size = cfg.DATA_PRESET.HEATMAP_SIZE
+        self._input_size = cfg.DATA_PRESET.IMAGE_SIZE       # IMAGE_SIZE: 256*192
+        self._output_size = cfg.DATA_PRESET.HEATMAP_SIZE    # HEATMAP_SIZE: 64*48
 
-        self._sigma = cfg.DATA_PRESET.SIGMA
+        self._sigma = cfg.DATA_PRESET.SIGMA  # 2
 
         if cfg.DATA_PRESET.TYPE == 'simple':
             pose_dataset = builder.retrieve_dataset(self.cfg.DATASET.TRAIN)
@@ -282,7 +283,7 @@ class DetectionLoader():
                     cropped_boxes[i] = torch.FloatTensor(cropped_box)
 
                 # inps, cropped_boxes = self.transformation.align_transform(orig_img, boxes)
-
+                # demo_api.predict_orientation(inps)
                 self.wait_and_put(self.pose_queue, (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes))
 
     def read(self):

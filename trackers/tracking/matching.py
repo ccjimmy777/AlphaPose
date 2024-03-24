@@ -110,6 +110,9 @@ def embedding_distance(tracks, detections, metric='cosine'):
     return cost_matrix
 
 
+# def orientation_distance(tracks, detections, metric='cosine'):s
+
+
 def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
     if cost_matrix.size == 0:
         return cost_matrix

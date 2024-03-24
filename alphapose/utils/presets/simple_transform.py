@@ -15,6 +15,8 @@ from ..bbox import (_box_to_center_scale, _center_scale_to_box,
 from ..transforms import (addDPG, affine_transform, flip_joints_3d,
                           get_affine_transform, im_to_torch)
 
+from third_party.MEBOW.tools import demo_api
+
 # Only windows visual studio 2013 ~2017 support compile c/cuda extensions
 # If you force to compile extension on Windows and ensure appropriate visual studio
 # is intalled, you can try to use these ext_modules.
@@ -95,6 +97,10 @@ class SimpleTransform(object):
         bbox = _center_scale_to_box(center, scale)
 
         img = im_to_torch(img)
+
+        input = img.unsqueeze(0)
+        demo_api.predict_orientation(input)
+
         img[0].add_(-0.406)
         img[1].add_(-0.457)
         img[2].add_(-0.480)
@@ -264,7 +270,7 @@ class SimpleTransform(object):
         img[2].add_(-0.480)
         
         if self._loss_type == 'Combined':
-        	return img, [torch.from_numpy(target_mse), torch.from_numpy(target_inter)], [torch.from_numpy(target_weight_mse), torch.from_numpy(target_weight_inter)], torch.Tensor(bbox)
+            return img, [torch.from_numpy(target_mse), torch.from_numpy(target_inter)], [torch.from_numpy(target_weight_mse), torch.from_numpy(target_weight_inter)], torch.Tensor(bbox)
         else:
             return img, torch.from_numpy(target), torch.from_numpy(target_weight), torch.Tensor(bbox)
 

@@ -657,6 +657,43 @@ def PCK_match_fullbody(pick_pred, pred_score, all_preds, ref_dist):
     num_match_keypoints = (num_match_keypoints_body + num_match_keypoints_face + num_match_keypoints_hand) / mask.sum() / 2 * kp_nums
     return num_match_keypoints
 
+# added by ccj at 24/3/21
+
+# subclass JSONEncoder
+import datetime
+from json import JSONEncoder
+class DateTimeEncoder(JSONEncoder):
+    #Override the default method
+    def default(self, obj):
+        if isinstance(obj, (datetime.date, datetime.datetime)):
+            return obj.isoformat()
+            
+def write_json_runtime(runtime_dit, outputpath, outputfile, seq_name):
+    if os.path.exists(os.path.join(outputpath, outputfile)):
+        data = load(os.path.join(outputpath, outputfile))
+    else:
+        data = dict()
+    
+    if 'runtime' in data.keys():
+        data['runtime'].append(runtime_dit['total_mean'])
+    else:
+        data['runtime'] = [runtime_dit['total_mean']]
+    
+    if seq_name in data.keys():
+        data[seq_name].append(runtime_dit['total_mean'])
+    else:
+        data[seq_name] = [runtime_dit['total_mean']]
+    
+    if seq_name + '_full' in data.keys():
+        data[seq_name + '_full'].append(runtime_dit)
+    else:
+        data[seq_name + '_full'] = [runtime_dit]
+    
+    profile_output = os.path.join(outputpath, outputfile)
+    with open(profile_output, 'w') as f:
+        json.dump(data, f, indent=4, cls=DateTimeEncoder)
+
+
 def write_json_posetrack18(all_results, outputpath, outputfile):
     categories = []
     annotations = []
@@ -681,21 +718,27 @@ def write_json_posetrack18(all_results, outputpath, outputfile):
     gt_folder = '/mnt/d/data/posetrack18/annotations/val/'
     gt = load(os.path.join(gt_folder, outputfile))
 
+    for gt_image in gt['images']:
+        img = {}
+        img['id'] = gt_image['id']
+        img['file_name'] = gt_image['file_name']
+        images.append(img)
+
     # images_id = []
     for im_res in all_results:
         im_name = im_res['imgname']
         im_name_index = int(os.path.basename(im_name).split('.')[0].split('_')[-1])  # int() 去掉前导零
-        img = {}
-        img['id'] = gt['images'][im_name_index]['id']
-        img['file_name'] = gt['images'][im_name_index]['file_name']
+        # img = {}
+        # img['id'] = gt['images'][im_name_index]['id']
+        # img['file_name'] = gt['images'][im_name_index]['file_name']
         # if img['id'] not in images_id:
         #     images.append(img)
         #     images_id.append(img['id'])
-        images.append(img)
+        # images.append(img)
 
         for human in im_res['result']:
             ann = {}
-            ann['image_id'] = img['id']
+            ann['image_id'] = gt['images'][im_name_index]['id']  # img['id'] == gt['images'][im_name_index]['id']
 
             kp_preds = human['keypoints']
             kp_scores = human['kp_score']

@@ -585,7 +585,7 @@ def heatmap_to_coord_simple(hms, bbox, hms_flip=None, **kwargs):
         preds[i] = transform_preds(coords[i], center, scale,
                                    [hm_w, hm_h])
 
-    return preds, maxvals
+    return preds, maxvals  # pose_coord, pose_score
 
 
 def heatmap_to_coord_simple_regress(preds, bbox, hm_shape, norm_type, hms_flip=None):
