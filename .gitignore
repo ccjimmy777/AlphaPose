@@ -121,3 +121,5 @@ data
 
 third_party/*
 third_party/**
+third_party/MEBOW
+third_party/WildCamera
