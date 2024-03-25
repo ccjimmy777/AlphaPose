@@ -55,6 +55,32 @@ def get_smpl_color(idx):
 
     return color
 
+def vis_frame_debug(frame, win_name, tlbrs=None, infos=list(), show_det=False, stage=0):
+    head_info='stage {}/6'.format(stage)
+    if tlbrs is None:
+        cv2.putText(frame, head_info, (10, 20 + 30*stage), DEFAULT_FONT, 1, RED, 2)
+        cv2.imshow(win_name, frame); cv2.waitKey(0)
+        return
+    
+    if show_det:
+        color = GREEN
+        for tlbr in tlbrs:
+            cv2.rectangle(frame, (int(tlbr[0]), int(tlbr[1])), (int(tlbr[2]), int(tlbr[3])), color, 2)  # tlbr: xmin,ymin,xmax,ymax （和下面函数中的规则不一样！）
+        
+    for i, info in enumerate(infos):
+        if 'track_id' in info: 
+            color = get_color_fast(info['track_id'])
+        else:
+            color = RED
+        cv2.rectangle(frame, (int(tlbrs[i][0]), int(tlbrs[i][1])), (int(tlbrs[i][2]), int(tlbrs[i][3])), color, 2)
+        
+        for j, key in enumerate(info.keys()):
+            dict_str = '{0}: {1}'.format(key, info[key])
+            cv2.putText(frame, dict_str, (int(tlbrs[i][0]), int((tlbrs[i][1] - 10 + 40*j))), DEFAULT_FONT, 1, color, 2)
+
+    cv2.putText(frame, head_info, (10, 20 + 30*stage), DEFAULT_FONT, 1, RED, 2)
+    cv2.imshow(win_name, frame); cv2.waitKey(0)
+
 
 def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
     '''
@@ -234,8 +260,8 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
         else:
             color = BLUE
 
-        oris, thetas, ls_3ds, rs_3ds, neck_3ds, root_3ds = oe.orientation_estimate_mywork([kp_preds.numpy()], 1370.7920746385005, 960, 540)
-        ori = oris[0]; theta = thetas[0]; ls_3d = ls_3ds[0]; rs_3d = rs_3ds[0]; neck_3d = neck_3ds[0]; root_3d = root_3ds[0]
+        ori2d = oe.orientation_estimate_mywork2d([kp_preds.numpy()], 1370.7920746385005, 960, 540)
+        # ori = oris[0]; theta = thetas[0]; ls_3d = ls_3ds[0]; rs_3d = rs_3ds[0]; neck_3d = neck_3ds[0]; root_3d = root_3ds[0]
 
         # Draw bboxes
         if opt.showbox:
@@ -254,12 +280,12 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
             cv2.rectangle(img, (int(bbox[0]), int(bbox[2])), (int(bbox[1]), int(bbox[3])), color, 2)
             if opt.tracking:
                 cv2.putText(img, str(human['idx']), (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(ori), (int(bbox[0]), int((bbox[2] + 26*2))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(theta), (int(bbox[0]), int((bbox[2] + 26*3))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(ls_3d), (int(bbox[0]), int((bbox[2] + 26*4))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(rs_3d), (int(bbox[0]), int((bbox[2] + 26*5))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(neck_3d), (int(bbox[0]), int((bbox[2] + 26*6))), DEFAULT_FONT, 1, BLACK, 2)
-                cv2.putText(img, str(root_3d), (int(bbox[0]), int((bbox[2] + 26*7))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(ori2d), (int(bbox[0]), int((bbox[2] + 26*2))), DEFAULT_FONT, 1, BLACK, 2)
+                # cv2.putText(img, str(theta), (int(bbox[0]), int((bbox[2] + 26*3))), DEFAULT_FONT, 1, BLACK, 2)
+                # cv2.putText(img, str(ls_3d), (int(bbox[0]), int((bbox[2] + 26*4))), DEFAULT_FONT, 1, BLACK, 2)
+                # cv2.putText(img, str(rs_3d), (int(bbox[0]), int((bbox[2] + 26*5))), DEFAULT_FONT, 1, BLACK, 2)
+                # cv2.putText(img, str(neck_3d), (int(bbox[0]), int((bbox[2] + 26*6))), DEFAULT_FONT, 1, BLACK, 2)
+                # cv2.putText(img, str(root_3d), (int(bbox[0]), int((bbox[2] + 26*7))), DEFAULT_FONT, 1, BLACK, 2)
         # Draw keypoints
         for n in range(kp_scores.shape[0]):
             if kp_scores[n] <= vis_thres[n]:
@@ -278,7 +304,7 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
                         cv2.circle(img, (cor_x, cor_y), 8, YELLOW, -1)
                     elif n == 17:
                         cv2.circle(img, (cor_x, cor_y), 8, PURPLE, -1)
-                        oe.draw_orientation_vector(img, (cor_x, cor_y), ori, 1370.7920746385005)
+                        oe.draw_orientation(img, (cor_x, cor_y), oe.vector_to_degree(ori2d))
                     elif n == 18:
                         cv2.circle(img, (cor_x, cor_y), 8, GREEN, -1)
                 else:

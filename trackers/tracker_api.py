@@ -29,6 +29,8 @@ from ReidModels.osnet import *
 from ReidModels.osnet_ain import osnet_ain_x1_0
 from ReidModels.resnet_fc import resnet50_fc512
 
+from alphapose.utils import vis
+
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
@@ -235,7 +237,7 @@ class Tracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',pscores=None,_debug = False):
+    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',pscores=None,_debug=True):
         #bboxs:[x1,y1.x2,y2]
         self.frame_id += 1
         activated_starcks = []
@@ -243,7 +245,7 @@ class Tracker(object):
         lost_stracks = []
         removed_stracks = []
 
-        ''' Step 1: Network forward, get human identity embedding''' 
+        ''' Step 0: Network forward, get human identity embedding''' 
         assert len(inps)==len(bboxs),'Unmatched Length Between Inps and Bboxs'
         assert len(inps)==len(pose),'Unmatched Length Between Inps and Heatmaps'  
         with torch.no_grad():
@@ -254,6 +256,13 @@ class Tracker(object):
                           (tlbrs, f,p,c,ps) in zip(bboxs, feats,pose,cropped_boxes,pscores)]
         else:
             detections = []
+
+        if _debug:
+            img = np.array(img0, dtype=np.uint8)[:, :, ::-1].copy()
+            win_name = 'frame_id:'+str(self.frame_id)
+            cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+            vis.vis_frame_debug(img, win_name, bboxs, infos=[], show_det=True, stage=0)
+
         ''' Add newly detected tracklets to tracked_stracks'''
         unconfirmed = []
         tracked_stracks = []  # type: list[STrack]
@@ -264,6 +273,8 @@ class Tracker(object):
                 tracked_stracks.append(track)
                 strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         ###joint track with bbox-iou
+        # Step 1: First association, with re-id feature + bbox motion
+        # TODO: self.lost_stracks 缺乏有效利用，仅有重识别的一次机会（即当前步骤）
         strack_pool = joint_stracks(tracked_stracks, self.lost_stracks)
         STrack.multi_predict(strack_pool)
         dists_emb = embedding_distance(strack_pool, detections)
@@ -279,8 +290,18 @@ class Tracker(object):
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
+        
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 1: {1} ======'.format(self.frame_id, 'dists_emb'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=1)
 
-        #Step 3: Second association, with IOU
+        #Step 2: Second association, with IOU
         detections = [detections[i] for i in u_detection]
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked ]
         dists_iou = iou_distance(r_tracked_stracks, detections) 
@@ -301,6 +322,17 @@ class Tracker(object):
             if not track.state == TrackState.Lost:
                 track.mark_lost()
                 lost_stracks.append(track)
+        
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 2: {1} ======'.format(self.frame_id, 'dists_iou'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=2)
+
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [detections[i] for i in u_detection]
         dists = iou_distance(unconfirmed, detections)
@@ -312,6 +344,16 @@ class Tracker(object):
             track = unconfirmed[it]
             track.mark_removed()
             removed_stracks.append(track)
+        
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 3: {1} ======'.format(self.frame_id, 'dists_iou_unconfirmed'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=3)
 
         """ Step 4: Init new stracks"""
         for inew in u_detection:
@@ -320,12 +362,32 @@ class Tracker(object):
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_starcks.append(track)
+        
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 4: {1} ======'.format(self.frame_id, 'Init new stracks'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=4)
 
         """ Step 5: Update state"""
         for track in self.lost_stracks:
             if self.frame_id - track.end_frame > self.max_time_lost:
                 track.mark_removed()
                 removed_stracks.append(track)
+        
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 5: {1} ======'.format(self.frame_id, 'Remove old stracks'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=5)
 
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
         self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_starcks)
@@ -339,11 +401,15 @@ class Tracker(object):
         # get scores of lost tracks
         output_stracks = [track for track in self.tracked_stracks]
         if _debug:
-            logger.debug('===========Frame {}=========='.format(self.frame_id))
+            logger.debug('===========Frame {} === Summary =========='.format(self.frame_id))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            bboxs = [track.tlbr for track in activated_starcks]
+            infos = [{'track_id': track.track_id, 'score': track.score} for track in activated_starcks]
+            vis.vis_frame_debug(img, win_name, bboxs, infos=infos, stage=6)
+
         return output_stracks
 
 def joint_stracks(tlista, tlistb):
