@@ -110,8 +110,14 @@ def embedding_distance(tracks, detections, metric='cosine'):
     return cost_matrix
 
 
-# def orientation_distance(tracks, detections, metric='cosine'):s
-
+def orientation_distance(tracks, detections, metric='cosine'):
+    cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float)
+    if cost_matrix.size == 0:
+        return cost_matrix
+    det_orientations = np.asarray([track.curr_orient for track in detections], dtype=np.float)
+    for i, track in enumerate(tracks):
+        cost_matrix[i, :] = np.maximum(0.0, cdist(track.smooth_orient.reshape(1,-1), det_orientations, metric))
+    return cost_matrix
 
 def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
     if cost_matrix.size == 0:

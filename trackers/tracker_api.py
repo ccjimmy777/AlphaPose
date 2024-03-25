@@ -32,7 +32,7 @@ from ReidModels.resnet_fc import resnet50_fc512
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
-    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ps,buffer_size=30, temp_orient=180):
+    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ps,buffer_size=30, temp_orient=None):
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
@@ -55,18 +55,21 @@ class STrack(BaseTrack):
         # added by ccj at 24/3/24
         self.smooth_orient_alpha = 0.9 
         self.smooth_orient = None
-        self.update_orientations(temp_orient)
         self.orientations = deque([], maxlen=buffer_size)
+        self.update_orientations(temp_orient)
     
-    def update_orientations(self, temp_orient):
-        orient = temp_orient % 360
+    def update_orientations(self, orient):
+        if orient is None: return
+        # orient = orient % 360
+        orient /= np.linalg.norm(orient)
         self.curr_orient = orient
         if self.smooth_orient is None:
             self.smooth_orient = orient
         else:
             self.smooth_orient = self.smooth_orient_alpha *self.smooth_orient + (1-self.smooth_orient_alpha) * orient
         self.orientations.append(orient)
-        self.smooth_orient = self.smooth_orient % 360
+        # self.smooth_orient = self.smooth_orient % 360
+        self.smooth_orient /= np.linalg.norm(self.smooth_orient)
 
     def update_features(self, feat):
         feat /= np.linalg.norm(feat)

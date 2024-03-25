@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import PIL.Image as pil_img
 import torch
+import mywork.orientation_estimate as oe
 
 logging.getLogger('matplotlib.font_manager').disabled = True
 
@@ -76,7 +77,7 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
             ]
             p_color = [(0, 255, 255), (0, 191, 255), (0, 255, 102), (0, 77, 255), (0, 255, 0),  # Nose, LEye, REye, LEar, REar
                        (77, 255, 255), (77, 255, 204), (77, 204, 255), (191, 255, 77), (77, 191, 255), (191, 255, 77),  # LShoulder, RShoulder, LElbow, RElbow, LWrist, RWrist
-                       (204, 77, 255), (77, 255, 204), (191, 77, 255), (77, 255, 191), (127, 77, 255), (77, 255, 127), (0, 255, 255)]  # LHip, RHip, LKnee, Rknee, LAnkle, RAnkle, Neck
+                       (204, 77, 255), (77, 255, 204), (191, 77, 255), (77, 255, 191), (127, 77, 255), (77, 255, 127), (0, 255, 255), (0, 255, 0)]  # LHip, RHip, LKnee, Rknee, LAnkle, RAnkle, Neck, Root (mid of LHip and RHip)
             line_color = [(0, 215, 255), (0, 255, 204), (0, 134, 255), (0, 255, 50),
                           (77, 255, 222), (77, 196, 255), (77, 135, 255), (191, 255, 77), (77, 255, 77),
                           (77, 222, 255), (255, 156, 127),
@@ -217,8 +218,13 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
         kp_preds = human['keypoints']
         kp_scores = human['kp_score']
         if kp_num == 17:
+            # add neck
             kp_preds = torch.cat((kp_preds, torch.unsqueeze((kp_preds[5, :] + kp_preds[6, :]) / 2, 0)))
             kp_scores = torch.cat((kp_scores, torch.unsqueeze((kp_scores[5, :] + kp_scores[6, :]) / 2, 0)))
+            vis_thres.append(vis_thres[-1])
+            # add root
+            kp_preds = torch.cat((kp_preds, torch.unsqueeze((kp_preds[11, :] + kp_preds[12, :]) / 2, 0)))
+            kp_scores = torch.cat((kp_scores, torch.unsqueeze((kp_scores[11, :] + kp_scores[12, :]) / 2, 0)))
             vis_thres.append(vis_thres[-1])
         if opt.pose_track or opt.tracking:
             while isinstance(human['idx'], list):
@@ -227,6 +233,9 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
             color = get_color_fast(int(abs(human['idx'])))
         else:
             color = BLUE
+
+        oris, thetas, ls_3ds, rs_3ds, neck_3ds, root_3ds = oe.orientation_estimate_mywork([kp_preds.numpy()], 1370.7920746385005, 960, 540)
+        ori = oris[0]; theta = thetas[0]; ls_3d = ls_3ds[0]; rs_3d = rs_3ds[0]; neck_3d = neck_3ds[0]; root_3d = root_3ds[0]
 
         # Draw bboxes
         if opt.showbox:
@@ -245,15 +254,33 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
             cv2.rectangle(img, (int(bbox[0]), int(bbox[2])), (int(bbox[1]), int(bbox[3])), color, 2)
             if opt.tracking:
                 cv2.putText(img, str(human['idx']), (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(ori), (int(bbox[0]), int((bbox[2] + 26*2))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(theta), (int(bbox[0]), int((bbox[2] + 26*3))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(ls_3d), (int(bbox[0]), int((bbox[2] + 26*4))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(rs_3d), (int(bbox[0]), int((bbox[2] + 26*5))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(neck_3d), (int(bbox[0]), int((bbox[2] + 26*6))), DEFAULT_FONT, 1, BLACK, 2)
+                cv2.putText(img, str(root_3d), (int(bbox[0]), int((bbox[2] + 26*7))), DEFAULT_FONT, 1, BLACK, 2)
         # Draw keypoints
         for n in range(kp_scores.shape[0]):
             if kp_scores[n] <= vis_thres[n]:
                 continue
             cor_x, cor_y = int(kp_preds[n, 0]), int(kp_preds[n, 1])
             part_line[n] = (cor_x, cor_y)
+            
             if n < len(p_color):
                 if opt.tracking:
                     cv2.circle(img, (cor_x, cor_y), 3, color, -1)
+                    # left shoulder in red, right should in blue, middle(neck) in purple, 
+                    # and mid Hip (root) in green
+                    if n == 5:
+                        cv2.circle(img, (cor_x, cor_y), 8, RED, -1)
+                    elif n == 6:
+                        cv2.circle(img, (cor_x, cor_y), 8, YELLOW, -1)
+                    elif n == 17:
+                        cv2.circle(img, (cor_x, cor_y), 8, PURPLE, -1)
+                        oe.draw_orientation_vector(img, (cor_x, cor_y), ori, 1370.7920746385005)
+                    elif n == 18:
+                        cv2.circle(img, (cor_x, cor_y), 8, GREEN, -1)
                 else:
                     cv2.circle(img, (cor_x, cor_y), 3, p_color[n], -1)
             else:

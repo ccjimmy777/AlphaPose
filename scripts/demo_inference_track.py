@@ -61,7 +61,7 @@ parser.add_argument('--min_box_area', type=int, default=0,
                     help='min box area to filter out')
 parser.add_argument('--detbatch', type=int, default=5,
                     help='detection batch size PER GPU')
-parser.add_argument('--posebatch', type=int, default=64,  # 64
+parser.add_argument('--posebatch', type=int, default=16,  # 64
                     help='pose estimation maximum batch size PER GPU')
 parser.add_argument('--eval', dest='eval', default=False, action='store_true',
                     help='save the result json as coco format, using image index(int) instead of image name(str)')
