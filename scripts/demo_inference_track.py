@@ -94,6 +94,12 @@ parser.add_argument('--focal_est', dest='focal_estimation',
 args = parser.parse_args()
 cfg = update_config(args.cfg)
 
+camera_cfg = {
+    'focal': 1000.0,
+    'cx': 960.0,
+    'cy': 540.0
+}
+
 if platform.system() == 'Windows':
     args.sp = True
 
@@ -167,7 +173,8 @@ if __name__ == "__main__":
         seq_name = dir if dir != '' else root.split('/')[-1]
 
         # Load wild camera model for focal estimation
-        focal_result_path = os.path.join(args.outputpath, 'focal_estimation', seq_name + '.json')
+        focal_result_path = '/mnt/d/data/alphapose/results/mywork/focal_estimation/'
+        focal_result_path = os.path.join(focal_result_path, seq_name + '.json')
         if os.path.exists(focal_result_path):
             focal = load(focal_result_path)['focal']
         else:
@@ -189,6 +196,8 @@ if __name__ == "__main__":
 
         if args.focal_estimation:
             continue
+
+        camera_cfg['focal'] = focal
         
         # 结果汇总
         seq_result_path = os.path.join(args.outputpath, seq_name + '.json')
@@ -252,7 +261,9 @@ if __name__ == "__main__":
                         runtime_profile['pt'].append(pose_time)
                     # iii. Pose Tracking
                     if args.pose_track:
-                        boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores)
+                        camera_cfg['cx'] = orig_img.shape[1] / 2
+                        camera_cfg['cy'] = orig_img.shape[0] / 2
+                        boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores,camera_cfg)
                     hm = hm.cpu()
                     writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
                     if args.profile:
