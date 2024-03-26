@@ -60,7 +60,7 @@ def get_smpl_color(idx):
 
 def vis_frame_debug(frame, win_name, track_list=None, isDetect=False, stage=0):
     head_info='stage {}/6'.format(stage)
-    cv2.putText(frame, head_info, (10, 20 + 30*stage), DEFAULT_FONT, 1, RED, 2)
+    cv2.putText(frame, head_info, (10, int(20 + 30*stage)), DEFAULT_FONT, 1, RED, 2)
 
     if track_list is None:
         cv2.imshow(win_name, frame); cv2.waitKey(0)

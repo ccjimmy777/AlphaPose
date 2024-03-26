@@ -80,7 +80,7 @@ class STrack(BaseTrack):
             self.smooth_orient_score = ori_score
         else:
             weight = self.smooth_orient_score / (ori_score + self.smooth_orient_score)
-            self.smooth_orient = weight *self.smooth_orient + (1-weight) * ori_vec2d
+            self.smooth_orient = weight * self.smooth_orient + (1-weight) * ori_vec2d
             self.smooth_orient_score = np.linalg.norm(self.smooth_orient)
         ####
         self.orientations.append(ori_vec2d)
@@ -315,9 +315,32 @@ class Tracker(object):
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
             vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=1)
 
+        #Step 1-2 利用朝向信息做重识别
+        detections = [detections[i] for i in u_detection]
+        tracks = [strack_pool[i] for i in u_track]
+        dists_orient = orientation_distance(tracks, detections)
+        matches, u_track, u_detection =linear_assignment(dists_orient, thresh=0.7)
+        for itracked, idet in matches:
+            track = tracks[itracked]
+            det = detections[idet]
+            if track.state == TrackState.Tracked:
+                track.update(det, self.frame_id)
+                activated_starcks.append(track)
+            else:
+                track.re_activate(det, self.frame_id, new_id=False)
+                refind_stracks.append(track)
+
+        if _debug:
+            logger.debug('========== Frame {0} === Stage 1-2: {1} ======'.format(self.frame_id, 'dists_orient'))
+            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=1.2)
+
         #Step 2: Second association, with IOU
         detections = [detections[i] for i in u_detection]
-        r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked ]
+        r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked]
         dists_iou = iou_distance(r_tracked_stracks, detections) 
         matches, u_track, u_detection =linear_assignment(dists_iou, thresh=0.5)
 
