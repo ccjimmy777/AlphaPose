@@ -167,7 +167,8 @@ if __name__ == "__main__":
         seq_name = dir if dir != '' else root.split('/')[-1]
 
         # Load wild camera model for focal estimation
-        focal_result_path = os.path.join(args.outputpath, 'focal_estimation', seq_name + '.json')
+        focal_result_path = '/mnt/d/data/alphapose/results/mywork/focal_estimation/'
+        focal_result_path = os.path.join(focal_result_path, seq_name + '.json')
         if os.path.exists(focal_result_path):
             focal = load(focal_result_path)['focal']
         else:

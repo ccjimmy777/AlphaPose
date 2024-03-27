@@ -43,8 +43,8 @@ def orientation_estimate_mywork2d(pose_keypoints_2d, focal_length, cx, cy):
                         * K_inv @ root_2d_homo
 
         ori_vec3d = np.cross(root_3d-neck_3d, ls_3d-rs_3d)
+        ori_vec3d = ori_vec3d / np.linalg.norm(ori_vec3d)
         ori_vec2d = ori_vec3d[[2, 0]]  # 取 z、x 坐标
-        ori_vec2d = ori_vec2d / np.linalg.norm(ori_vec2d)
     
     return ori_vec2d
 

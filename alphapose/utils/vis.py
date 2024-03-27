@@ -260,7 +260,7 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
         else:
             color = BLUE
 
-        ori2d = oe.orientation_estimate_mywork2d([kp_preds.numpy()], 1370.7920746385005, 960, 540)
+        ori2d = oe.orientation_estimate_mywork2d([kp_preds.numpy()], 569.1423763986361, 427, 240)
         # ori = oris[0]; theta = thetas[0]; ls_3d = ls_3ds[0]; rs_3d = rs_3ds[0]; neck_3d = neck_3ds[0]; root_3d = root_3ds[0]
 
         # Draw bboxes

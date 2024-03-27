@@ -237,7 +237,7 @@ class Tracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',pscores=None,_debug=True):
+    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',pscores=None,_debug=False):
         #bboxs:[x1,y1.x2,y2]
         self.frame_id += 1
         activated_starcks = []
