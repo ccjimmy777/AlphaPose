@@ -25,6 +25,8 @@ from alphapose.utils.writer import DataWriter
 
 from demo_visualization import load_wild_camera_model, clear_abnormal
 from PIL import Image
+from alphapose.utils.pPose_nms import pose_nms
+from alphapose.utils.transforms import heatmap_to_coord_simple
 from mmengine.fileio import dump, load
 
 """----------------------------- Demo options -----------------------------"""
@@ -57,7 +59,7 @@ parser.add_argument('--profile', default=False, action='store_true',
                     help='add speed profiling at screen output')
 parser.add_argument('--format', type=str,
                     help='save in the format of cmu or coco or openpose, option: coco/cmu/open')
-parser.add_argument('--min_box_area', type=int, default=0,
+parser.add_argument('--min_box_area', type=int, default=100,  # 100
                     help='min box area to filter out')
 parser.add_argument('--detbatch', type=int, default=3,  # 5
                     help='detection batch size PER GPU')
@@ -263,6 +265,18 @@ if __name__ == "__main__":
                     if args.pose_track:
                         camera_cfg['cx'] = orig_img.shape[1] / 2
                         camera_cfg['cy'] = orig_img.shape[0] / 2
+                        pose_coords = []
+                        pose_scores = []
+                        for i in range(hm.shape[0]):
+                            bbox = cropped_boxes[i].tolist()
+                            pose_coord, pose_score = heatmap_to_coord_simple(hm[i], bbox)
+                            pose_coords.append(torch.from_numpy(pose_coord).unsqueeze(0))
+                            pose_scores.append(torch.from_numpy(pose_score).unsqueeze(0))
+                        preds_img = torch.cat(pose_coords)
+                        preds_scores = torch.cat(pose_scores)
+                        boxes, scores, ids, preds_img, preds_scores, pick_ids = \
+                            pose_nms(boxes, scores, ids, preds_img, preds_scores, args.min_box_area, use_heatmap_loss=(cfg.DATA_PRESET.get('LOSS_TYPE', 'MSELoss') == 'MSELoss'))
+                        inps = inps[pick_ids]; hm = hm[pick_ids]; cropped_boxes = cropped_boxes[pick_ids]
                         boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores,camera_cfg)
                     hm = hm.cpu()
                     writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)

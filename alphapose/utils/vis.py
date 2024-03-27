@@ -70,15 +70,20 @@ def vis_frame_debug(frame, win_name, track_list=None, isDetect=False, stage=0):
         color = GREEN
         for track in track_list:
             kp_preds = track.pose_recover
+            kp_scores = np.mean(track.pose_recover_score)
             kp_preds = np.concatenate((kp_preds, (kp_preds[5:6, :] + kp_preds[6:7, :])/2, (kp_preds[11:12, :] + kp_preds[12:13, :])/2), axis=0)
             vis_pose_simple(frame, kp_preds, color, track.curr_orient)
             # tlbr: xmin,ymin,xmax,ymax （和下面函数中的规则不一样！）
             cv2.rectangle(frame, (int(track.tlbr[0]), int(track.tlbr[1])), (int(track.tlbr[2]), int(track.tlbr[3])), color, 2)
             orient_degree = oe.vector_to_degree(track.curr_orient)
-            str1 = 'orient: {0:.3f} deg'.format(orient_degree)
-            cv2.putText(frame, str1, (int(track.tlbr[0]), int((track.tlbr[1] + 70))), DEFAULT_FONT, 0.7, oe.degree_to_color(orient_degree), 2)
-            str2 = 'orient_score: {0:.3f}'.format(track.curr_orient_score)
-            cv2.putText(frame, str2, (int(track.tlbr[0]), int((track.tlbr[1] + 110))), DEFAULT_FONT, 0.7, get_color_orient_score(track.curr_orient_score), 2)
+            str = 'orient: {0:.3f} deg'.format(orient_degree)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 70))), DEFAULT_FONT, 0.7, oe.degree_to_color(orient_degree), 2)
+            str = 'orient_score: {0:.3f}'.format(track.curr_orient_score)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 90))), DEFAULT_FONT, 0.7, get_color_orient_score(track.curr_orient_score), 2)
+            str = 'pose_score: {0:.3f}'.format(kp_scores)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 110))), DEFAULT_FONT, 0.7, get_color_orient_score(kp_scores), 2)
+            str = 'det_score: {0:.3f}'.format(track.detscore)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 130))), DEFAULT_FONT, 0.7, get_color_orient_score(track.detscore), 2)
     else:
         for track in track_list:
             color = get_color_fast(track.track_id)
@@ -96,6 +101,8 @@ def vis_frame_debug(frame, win_name, track_list=None, isDetect=False, stage=0):
             cv2.putText(frame, str3, (int(track.tlbr[0]), int((track.tlbr[1] + 150))), DEFAULT_FONT, 1, oe.degree_to_color(orient_degree), 2)
             str4 = 'orient_score: {0:.3f}'.format(track.smooth_orient_score)
             cv2.putText(frame, str4, (int(track.tlbr[0]), int((track.tlbr[1] + 190))), DEFAULT_FONT, 1, get_color_orient_score(track.smooth_orient_score), 2)
+            str = 'det_score: {0:.3f}'.format(track.detscore)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 230))), DEFAULT_FONT, 1, get_color_orient_score(track.detscore), 2)
         
     cv2.imshow(win_name, frame); cv2.waitKey(0)
 

@@ -36,7 +36,7 @@ from mywork.orientation_estimate import orientation_estimate_mywork2d
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
-    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ps,buffer_size=30,cfg_camera=dict()):  # buffer_size=30
+    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ds,buffer_size=30,cfg_camera=dict()):  # buffer_size=30
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
@@ -52,12 +52,13 @@ class STrack(BaseTrack):
         self.features = deque([], maxlen=buffer_size)
         self.alpha = 0.9 
         self.pose = pose
-        self.detscore = ps
+        self.detscore = ds.item()
         self.crop_box = crop_box
         self.file_name = file_name
         
         # added by ccj at 24/3/24
         self.pose_recover = None
+        self.pose_recover_score = 0
         self.focal = cfg_camera.get('focal', 1000.0)
         self.cx = cfg_camera.get('cx', 960.0)
         self.cy = cfg_camera.get('cy', 540.0)
@@ -72,6 +73,7 @@ class STrack(BaseTrack):
         pose_coord, pose_score = heatmap_to_coord_simple(pose, self.crop_box)
         ori_vec2d, ori_score = orientation_estimate_mywork2d(pose_coord, self.focal, self.cx, self.cy)
         self.pose_recover = pose_coord
+        self.pose_recover_score = pose_score
 
         self.curr_orient = ori_vec2d
         self.curr_orient_score = ori_score
@@ -253,13 +255,16 @@ class Tracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',pscores=None, camera_cfg=None, _debug=True):
+    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',dscores=None, camera_cfg=None, _debug=False,_debug_frame_id=67):  # _debug_frame_id=58
         #bboxs:[x1,y1.x2,y2]
         self.frame_id += 1
         activated_starcks = []
         refind_stracks = []
         lost_stracks = []
         removed_stracks = []
+
+        # if _debug:
+        #     logger.debug('self.frame_id: {}'.format(self.frame_id))
 
         ''' Step 0: Network forward, get human identity embedding''' 
         assert len(inps)==len(bboxs),'Unmatched Length Between Inps and Bboxs'
@@ -268,12 +273,12 @@ class Tracker(object):
             feats = self.model(inps).cpu().numpy()
         bboxs = np.asarray(bboxs)
         if len(bboxs)>0:
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ps,30,camera_cfg) for
-                          (tlbrs, f,p,c,ps) in zip(bboxs, feats,pose,cropped_boxes,pscores)]
+            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ds,30,camera_cfg) for
+                          (tlbrs, f,p,c,ds) in zip(bboxs, feats,pose,cropped_boxes,dscores)]
         else:
             detections = []
 
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             img = np.array(img0, dtype=np.uint8)[:, :, ::-1].copy()
             win_name = 'frame_id:'+str(self.frame_id)
             cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
@@ -307,7 +312,7 @@ class Tracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
         
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 1: {1} ======'.format(self.frame_id, 'dists_emb'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -330,7 +335,7 @@ class Tracker(object):
                 track.re_activate(det, self.frame_id, new_id=False)
                 refind_stracks.append(track)
 
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 1-2: {1} ======'.format(self.frame_id, 'dists_orient'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -360,7 +365,7 @@ class Tracker(object):
                 track.mark_lost()
                 lost_stracks.append(track)
         
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 2: {1} ======'.format(self.frame_id, 'dists_iou'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -380,7 +385,7 @@ class Tracker(object):
             track.mark_removed()
             removed_stracks.append(track)
         
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 3: {1} ======'.format(self.frame_id, 'dists_iou_unconfirmed'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -391,12 +396,12 @@ class Tracker(object):
         """ Step 4: Init new stracks"""
         for inew in u_detection:
             track = detections[inew]
-            if track.score < self.det_thresh:
+            if track.detscore < self.det_thresh:
                 continue
             track.activate(self.kalman_filter, self.frame_id)
             activated_starcks.append(track)
         
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 4: {1} ======'.format(self.frame_id, 'Init new stracks'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -410,7 +415,7 @@ class Tracker(object):
                 track.mark_removed()
                 removed_stracks.append(track)
         
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('========== Frame {0} === Stage 5: {1} ======'.format(self.frame_id, 'Remove old stracks'))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
@@ -429,7 +434,7 @@ class Tracker(object):
 
         # get scores of lost tracks
         output_stracks = [track for track in self.tracked_stracks]
-        if _debug:
+        if _debug and self.frame_id >= _debug_frame_id:
             logger.debug('===========Frame {} === Summary =========='.format(self.frame_id))
             logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
