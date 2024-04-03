@@ -99,7 +99,7 @@ class SimpleTransform(object):
         img = im_to_torch(img)
 
         input = img.unsqueeze(0)
-        demo_api.predict_orientation(input)
+        # demo_api.predict_orientation(input)
 
         img[0].add_(-0.406)
         img[1].add_(-0.457)

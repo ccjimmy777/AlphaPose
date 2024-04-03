@@ -31,12 +31,11 @@ from ReidModels.resnet_fc import resnet50_fc512
 
 from alphapose.utils import vis
 from alphapose.utils.transforms import heatmap_to_coord_simple
-from mywork.orientation_estimate import orientation_estimate_mywork2d
 
 class STrack(BaseTrack):
     shared_kalman = KalmanFilter()
 
-    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ds,buffer_size=30,cfg_camera=dict()):  # buffer_size=30
+    def __init__(self, tlwh, score, temp_feat, pose,crop_box,file_name,ds,buffer_size=5,ori_vec=None):  # buffer_size=30
 
         # wait activate
         self._tlwh = np.asarray(tlwh, dtype=np.float)
@@ -57,39 +56,24 @@ class STrack(BaseTrack):
         self.file_name = file_name
         
         # added by ccj at 24/3/24
-        self.use_orient = False
-        if self.use_orient:
-            self.pose_recover = None
-            self.pose_recover_score = 0
-            self.focal = cfg_camera.get('focal', 1000.0)
-            self.cx = cfg_camera.get('cx', 960.0)
-            self.cy = cfg_camera.get('cy', 540.0)
-            self.curr_orient = None
-            self.curr_orient_score = 0.8 
-            self.smooth_orient = None
-            self.smooth_orient_score = 0.8
-            self.orientations = deque([], maxlen=5)
-            self.update_orientations(pose)
+        self.curr_orient = None
+        self.smooth_orient = None
+        self.smooth_orient_alpha = 0.5
+        self.orientations = deque([], maxlen=5)
+        self.update_orientations(ori_vec)
     
-    def update_orientations(self, pose):
-        if not self.use_orient:
+    def update_orientations(self, ori_vec):
+        if ori_vec is None:
             return
-        pose_coord, pose_score = heatmap_to_coord_simple(pose, self.crop_box)
-        ori_vec2d, ori_score = orientation_estimate_mywork2d(pose_coord, self.focal, self.cx, self.cy)
-        self.pose_recover = pose_coord
-        self.pose_recover_score = pose_score
+        # ori_vec2d, ori_score = orientation_estimate_mywork2d(pose_coord, self.focal, self.cx, self.cy)
+        self.curr_orient = ori_vec / np.linalg.norm(ori_vec)
 
-        self.curr_orient = ori_vec2d
-        self.curr_orient_score = ori_score
         if self.smooth_orient is None:
-            self.smooth_orient = ori_vec2d
-            self.smooth_orient_score = ori_score
+            self.smooth_orient = self.curr_orient
         else:
-            weight = self.smooth_orient_score / (ori_score + self.smooth_orient_score)
-            self.smooth_orient = weight * self.smooth_orient + (1-weight) * ori_vec2d
-            self.smooth_orient_score = np.linalg.norm(self.smooth_orient)
+            self.smooth_orient = self.smooth_orient_alpha * self.smooth_orient + (1- self.smooth_orient_alpha) * self.curr_orient
         ####
-        self.orientations.append(ori_vec2d)
+        self.orientations.append(self.curr_orient)
         self.smooth_orient /= np.linalg.norm(self.smooth_orient)
 
     def update_features(self, feat):
@@ -150,7 +134,7 @@ class STrack(BaseTrack):
         self.detscore = new_track.detscore
         self.crop_box = new_track.crop_box
         self.file_name = new_track.file_name
-        self.update_orientations(new_track.pose)
+        self.update_orientations(new_track.curr_orient)
 
     def update(self, new_track, frame_id, update_feature=True, update_orient=True):
         """
@@ -176,7 +160,7 @@ class STrack(BaseTrack):
         if update_feature:
             self.update_features(new_track.curr_feat)
         if update_orient:
-            self.update_orientations(new_track.pose)
+            self.update_orientations(new_track.curr_orient)
 
     @property
     #@jit(nopython=True)
@@ -259,7 +243,7 @@ class Tracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',dscores=None, camera_cfg=None, _debug=False,_debug_frame_id=0):  # _debug_frame_id=58
+    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',dscores=None, ori_vecs=None, _debug=False,_debug_frame_id=0):  # _debug_frame_id=58
         #bboxs:[x1,y1.x2,y2]
         self.frame_id += 1
         activated_starcks = []
@@ -277,8 +261,8 @@ class Tracker(object):
             feats = self.model(inps).cpu().numpy()
         bboxs = np.asarray(bboxs)
         if len(bboxs)>0:
-            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ds,30,camera_cfg) for
-                          (tlbrs, f,p,c,ds) in zip(bboxs, feats,pose,cropped_boxes,dscores)]
+            detections = [STrack(STrack.tlbr_to_tlwh(tlbrs[:]), 0.9, f,p,c,file_name,ds,30,ori_vec) for
+                          (tlbrs, f,p,c,ds, ori_vec) in zip(bboxs, feats,pose,cropped_boxes,dscores, ori_vecs)]
         else:
             detections = []
 
@@ -347,11 +331,13 @@ class Tracker(object):
         #     logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
         #     vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=1.2)
 
-        #Step 2: Second association, with IOU
+        #Step 2: Second association, with IOU （改动了 iou）
         detections = [detections[i] for i in u_detection]
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked]
         dists_iou = iou_distance(r_tracked_stracks, detections) 
-        matches, u_track, u_detection =linear_assignment(dists_iou, thresh=0.5)
+        # dists_iou = iou_distance_ours(r_tracked_stracks, detections)
+        # dists_iou = fuse_orientation(self.kalman_filter, dists_iou, r_tracked_stracks, detections)
+        matches, u_track, u_detection =linear_assignment(dists_iou, thresh=0.5)  # 0.5
 
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]

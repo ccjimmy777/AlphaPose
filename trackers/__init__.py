@@ -1,8 +1,8 @@
 import numpy as np
 import torch
-def track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,dscores,camera_cfg):
+def track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,dscores,ori_vecs=None):
     hm = hm.cpu().data.numpy()
-    online_targets = tracker.update(orig_img,inps,boxes,hm,cropped_boxes,im_name,dscores,camera_cfg)
+    online_targets = tracker.update(orig_img,inps,boxes,hm,cropped_boxes,im_name,dscores,ori_vecs)
     new_boxes,new_scores,new_ids,new_hm,new_crop = [],[],[],[],[]
     for t in online_targets:
         tlbr = t.tlbr

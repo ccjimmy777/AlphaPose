@@ -28,6 +28,8 @@ from PIL import Image
 from alphapose.utils.pPose_nms import pose_nms
 from alphapose.utils.transforms import heatmap_to_coord_simple
 from mmengine.fileio import dump, load
+from mywork.orientation_estimate import orientation_estimate_medow
+
 
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Demo')
@@ -277,7 +279,8 @@ if __name__ == "__main__":
                         boxes, scores, ids, preds_img, preds_scores, pick_ids = \
                             pose_nms(boxes, scores, ids, preds_img, preds_scores, args.min_box_area, use_heatmap_loss=(cfg.DATA_PRESET.get('LOSS_TYPE', 'MSELoss') == 'MSELoss'))
                         inps = inps[pick_ids]; hm = hm[pick_ids]; cropped_boxes = cropped_boxes[pick_ids]
-                        boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores,camera_cfg)
+                        ori_vecs = orientation_estimate_medow(inps)
+                        boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores, ori_vecs)
                     hm = hm.cpu()
                     writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
                     if args.profile:

@@ -9,7 +9,8 @@ from third_party.MEBOW.tools.demo_api import predict_orientation
 # matplotlib.use('TkAgg')
 
 def orientation_estimate_medow(input_tensor):
-    ori = predict_orientation(input_tensor)
+    input_tensor_cpu = input_tensor.cpu()
+    ori = predict_orientation(input_tensor_cpu)
     return degree_to_vector(ori)
 
 def orientation_estimate_mywork2d(pose_keypoints_2d, focal_length, cx, cy, format='halpe26', isDebug=False):
@@ -127,8 +128,12 @@ def orientation_estimate_mywork(pose_keypoints_2d, focal_length, cx, cy):
 
 # transform degree to vector
 def degree_to_vector(degree):
-    rad = degree * np.pi / 180.  # degree to radian
-    return np.array([np.cos(rad), np.sin(rad)])
+    rads = degree * np.pi / 180.  # degree to radian
+    rads = rads.numpy()
+    vecs = np.array([np.cos(rads), np.sin(rads)])
+    vecs = vecs.T
+    # vecs = np.array([[np.cos(rad), np.sin(rad)] for rad in rads])
+    return vecs
 
 def vector_to_degree(vector):
     degree = np.arctan2(vector[1], vector[0]) * 180. / np.pi

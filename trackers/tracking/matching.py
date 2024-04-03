@@ -93,6 +93,45 @@ def iou_distance(atracks, btracks):
 
     return cost_matrix
 
+
+def ious_ours(atlbrs, btlbrs):
+    boxes = np.ascontiguousarray(atlbrs, dtype=np.float32)
+    query_boxes = np.ascontiguousarray(btlbrs, dtype=np.float32)
+    N = boxes.shape[0]
+    K = query_boxes.shape[0]
+    ious = np.zeros((N, K), dtype=boxes.dtype)
+    if N * K == 0:
+        return ious
+
+    for k in range(K):
+        query_box_area = ((query_boxes[k, 2] - query_boxes[k, 0] + 1) *
+                            (query_boxes[k, 3] - query_boxes[k, 1] + 1))
+        
+        for n in range(N):
+            iw = (min(boxes[n, 2], query_boxes[k, 2]) - max(
+                boxes[n, 0], query_boxes[k, 0]) + 1)
+            if iw > 0:
+                ih = (min(boxes[n, 3], query_boxes[k, 3]) - max(
+                    boxes[n, 1], query_boxes[k, 1]) + 1)
+                if ih > 0:
+                    box_area = ((boxes[n, 2] - boxes[n, 0] + 1) * (boxes[n, 3] - boxes[n, 1] + 1))
+                    # ua = float((boxes[n, 2] - boxes[n, 0] + 1) * (boxes[n, 3] - boxes[n, 1] + 1) + query_box_area - iw * ih)
+                    area_min = min(box_area, query_box_area)
+                    ious[n, k] = iw * ih / area_min
+    return ious
+
+def iou_distance_ours(atracks, btracks):
+    if (len(atracks)>0 and isinstance(atracks[0], np.ndarray)) or (len(btracks) > 0 and isinstance(btracks[0], np.ndarray)):
+        atlbrs = atracks
+        btlbrs = btracks
+    else:
+        atlbrs = [track.tlbr for track in atracks]
+        btlbrs = [track.tlbr for track in btracks]
+    _ious = ious_ours(atlbrs, btlbrs)
+    cost_matrix = 1 - _ious
+
+    return cost_matrix
+
 def embedding_distance(tracks, detections, metric='cosine'):
     """
     :param tracks: list[STrack]
@@ -109,6 +148,13 @@ def embedding_distance(tracks, detections, metric='cosine'):
         cost_matrix[i, :] = np.maximum(0.0, cdist(track.smooth_feat.reshape(1,-1), det_features, metric))
     return cost_matrix
 
+def orientation_distance_onetrack(track, detections, metric='cosine'):
+    cost_matrix = np.zeros(len(detections), dtype=np.float32)
+    if cost_matrix.size == 0:
+        return cost_matrix
+    det_orientations = np.asarray([track.curr_orient for track in detections], dtype=np.float32)
+    cost_matrix = np.maximum(0.0, cdist(track.smooth_orient.reshape(1,-1), det_orientations, metric)).reshape(-1)
+    return cost_matrix
 
 def orientation_distance(tracks, detections, metric='cosine'):
     cost_matrix = np.zeros((len(tracks), len(detections)), dtype=np.float)
@@ -131,15 +177,36 @@ def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
     return cost_matrix
 
-def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.98):
+def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.9):  # 0.98
     if cost_matrix.size == 0:
         return cost_matrix
     gating_dim = 2 if only_position else 4
     gating_threshold = kalman_filter.chi2inv95[gating_dim]
     measurements = np.asarray([det.to_xyah() for det in detections])
+
+    dscores = np.asarray([det.detscore for det in detections])
+
     for row, track in enumerate(tracks):
         gating_distance = kf.gating_distance(
             track.mean, track.covariance, measurements, only_position, metric='maha')
-        cost_matrix[row, gating_distance > gating_threshold] = np.inf
-        cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* gating_distance
+        
+        ori_distance = orientation_distance_onetrack(track, detections, metric='cosine')
+
+        unmatched_detect_using_motion = gating_distance > gating_threshold
+        match_num_using_motion = np.sum(~unmatched_detect_using_motion)
+
+        unmatched_detect_using_orient = ori_distance > 0.5
+        if match_num_using_motion <= 1:
+            unmatched_detect = unmatched_detect_using_motion
+        else:
+            unmatched_detect = unmatched_detect_using_motion | unmatched_detect_using_orient
+
+        # unmatched_detect_for_sure = np.where((gating_distance > gating_threshold) & (ori_distance > 0.5))[0]
+
+        gating_distance_normalize = gating_distance / gating_threshold
+        # ori_distance_normalize = ori_distance / 2
+        # motion_orient_fuse_dist = gating_distance_normalize + ori_distance_normalize
+        cost_matrix[row, unmatched_detect] = np.inf
+        cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* gating_distance_normalize
+        # cost_matrix[row] = np.multiply(cost_matrix[row], dscores) + np.multiply(gating_distance_normalize, (1-dscores))
     return cost_matrix
