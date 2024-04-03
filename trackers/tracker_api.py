@@ -57,19 +57,23 @@ class STrack(BaseTrack):
         self.file_name = file_name
         
         # added by ccj at 24/3/24
-        self.pose_recover = None
-        self.pose_recover_score = 0
-        self.focal = cfg_camera.get('focal', 1000.0)
-        self.cx = cfg_camera.get('cx', 960.0)
-        self.cy = cfg_camera.get('cy', 540.0)
-        self.curr_orient = None
-        self.curr_orient_score = 0.8 
-        self.smooth_orient = None
-        self.smooth_orient_score = 0.8
-        self.orientations = deque([], maxlen=5)
-        self.update_orientations(pose)
+        self.use_orient = False
+        if self.use_orient:
+            self.pose_recover = None
+            self.pose_recover_score = 0
+            self.focal = cfg_camera.get('focal', 1000.0)
+            self.cx = cfg_camera.get('cx', 960.0)
+            self.cy = cfg_camera.get('cy', 540.0)
+            self.curr_orient = None
+            self.curr_orient_score = 0.8 
+            self.smooth_orient = None
+            self.smooth_orient_score = 0.8
+            self.orientations = deque([], maxlen=5)
+            self.update_orientations(pose)
     
     def update_orientations(self, pose):
+        if not self.use_orient:
+            return
         pose_coord, pose_score = heatmap_to_coord_simple(pose, self.crop_box)
         ori_vec2d, ori_score = orientation_estimate_mywork2d(pose_coord, self.focal, self.cx, self.cy)
         self.pose_recover = pose_coord
@@ -255,7 +259,7 @@ class Tracker(object):
 
         self.kalman_filter = KalmanFilter()
 
-    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',dscores=None, camera_cfg=None, _debug=False,_debug_frame_id=67):  # _debug_frame_id=58
+    def update(self,img0,inps=None,bboxs=None,pose=None,cropped_boxes=None,file_name='',dscores=None, camera_cfg=None, _debug=False,_debug_frame_id=0):  # _debug_frame_id=58
         #bboxs:[x1,y1.x2,y2]
         self.frame_id += 1
         activated_starcks = []
@@ -282,7 +286,7 @@ class Tracker(object):
             img = np.array(img0, dtype=np.uint8)[:, :, ::-1].copy()
             win_name = 'frame_id:'+str(self.frame_id)
             cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
-            vis.vis_frame_debug(img, win_name, track_list=detections, isDetect=True, stage=0)
+            vis.vis_frame_debug(img, win_name, logger, track_list=detections, isDetect=True, stage=0)
 
         ''' Add newly detected tracklets to tracked_stracks'''
         unconfirmed = []
@@ -318,30 +322,30 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=1)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=1)
 
         #Step 1-2 利用朝向信息做重识别
-        detections = [detections[i] for i in u_detection]
-        tracks = [strack_pool[i] for i in u_track]
-        dists_orient = orientation_distance(tracks, detections)
-        matches, u_track, u_detection =linear_assignment(dists_orient, thresh=0.7)
-        for itracked, idet in matches:
-            track = tracks[itracked]
-            det = detections[idet]
-            if track.state == TrackState.Tracked:
-                track.update(det, self.frame_id)
-                activated_starcks.append(track)
-            else:
-                track.re_activate(det, self.frame_id, new_id=False)
-                refind_stracks.append(track)
+        # detections = [detections[i] for i in u_detection]
+        # tracks = [strack_pool[i] for i in u_track]
+        # dists_orient = orientation_distance(tracks, detections)
+        # matches, u_track, u_detection =linear_assignment(dists_orient, thresh=0.7)
+        # for itracked, idet in matches:
+        #     track = tracks[itracked]
+        #     det = detections[idet]
+        #     if track.state == TrackState.Tracked:
+        #         track.update(det, self.frame_id)
+        #         activated_starcks.append(track)
+        #     else:
+        #         track.re_activate(det, self.frame_id, new_id=False)
+        #         refind_stracks.append(track)
 
-        if _debug and self.frame_id >= _debug_frame_id:
-            logger.debug('========== Frame {0} === Stage 1-2: {1} ======'.format(self.frame_id, 'dists_orient'))
-            logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
-            logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
-            logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
-            logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=1.2)
+        # if _debug and self.frame_id >= _debug_frame_id:
+        #     logger.debug('========== Frame {0} === Stage 1-2: {1} ======'.format(self.frame_id, 'dists_orient'))
+        #     logger.debug('Activated: {}'.format([track.track_id for track in activated_starcks]))
+        #     logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
+        #     logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
+        #     logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
+        #     vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=1.2)
 
         #Step 2: Second association, with IOU
         detections = [detections[i] for i in u_detection]
@@ -371,7 +375,7 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=2)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=2)
 
         '''Deal with unconfirmed tracks, usually tracks with only one beginning frame'''
         detections = [detections[i] for i in u_detection]
@@ -391,7 +395,7 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=3)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=3)
 
         """ Step 4: Init new stracks"""
         for inew in u_detection:
@@ -407,7 +411,7 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=4)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=4)
 
         """ Step 5: Update state"""
         for track in self.lost_stracks:
@@ -421,7 +425,7 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=5)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=5)
 
         self.tracked_stracks = [t for t in self.tracked_stracks if t.state == TrackState.Tracked]
         self.tracked_stracks = joint_stracks(self.tracked_stracks, activated_starcks)
@@ -440,7 +444,7 @@ class Tracker(object):
             logger.debug('Refind: {}'.format([track.track_id for track in refind_stracks]))
             logger.debug('Lost: {}'.format([track.track_id for track in lost_stracks]))
             logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
-            vis.vis_frame_debug(img, win_name, track_list=activated_starcks, isDetect=False, stage=6)
+            vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=6)
 
         return output_stracks
 

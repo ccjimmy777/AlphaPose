@@ -58,7 +58,7 @@ parser.add_argument('--showbox', default=False, action='store_true',
 parser.add_argument('--profile', default=False, action='store_true',
                     help='add speed profiling at screen output')
 parser.add_argument('--format', type=str,
-                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open')
+                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open/mpii/posetrack18')  # add mpii and posetrack18
 parser.add_argument('--min_box_area', type=int, default=100,  # 100
                     help='min box area to filter out')
 parser.add_argument('--detbatch', type=int, default=3,  # 5

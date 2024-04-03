@@ -693,6 +693,61 @@ def write_json_runtime(runtime_dit, outputpath, outputfile, seq_name):
     with open(profile_output, 'w') as f:
         json.dump(data, f, indent=4, cls=DateTimeEncoder)
 
+# keypoints mapping
+mpii_halpe26 = [
+    (0, 16),    # (mpii) 0  - RAnkle     - 16 (halpe26)
+    (1, 14),    # (mpii) 1  - RKnee      - 14 (halpe26)
+    (2, 12),    # (mpii) 2  - RHip       - 12 (halpe26)
+    (3, 11),    # (mpii) 3  - LHip       - 11 (halpe26)
+    (4, 13),    # (mpii) 4  - LKnee      - 13 (halpe26)
+    (5, 15),    # (mpii) 5  - LAnkle     - 15 (halpe26)
+    (6, 19),    # (mpii) 6  - Pelvis/Hip - 19 (halpe26)
+                # (mpii) 7  - Thorax     - None
+    (8, 18),    # (mpii) 8  - upper Neck - 18 (halpe26)
+    (9, 17),    # (mpii) 9  - Head top   - 17 (halpe26)
+    (10, 10),   # (mpii) 10 - RWrist     - 10 (halpe26)
+    (11, 8),    # (mpii) 11 - RElbow     - 8  (halpe26)
+    (12, 6),    # (mpii) 12 - RShoulder  - 6  (halpe26)
+    (13, 5),    # (mpii) 13 - LShoulder  - 5  (halpe26)
+    (14, 7),    # (mpii) 14 - LElbow     - 7  (halpe26)
+    (15, 9),    # (mpii) 15 - LWrist     - 9  (halpe26)
+]
+
+posetrack18_halpe26 = [
+    (0, 0),    # (posetrack18) 0 - Nose         - 0 (halpe26)
+    (1, 18),   # (posetrack18) 1 - upper Neck   - 18 (halpe26)
+    (2, 17),   # (posetrack18) 2 - Head top     - 17 (halpe26)
+    (3, 3),    # (posetrack18) 3 - LEar         - 3 (halpe26)
+    (4, 4),    # (posetrack18) 4 - REar         - 4 (halpe26)
+    (5, 5),    # (posetrack18) 5 - LShoulder    - 5 (halpe26)
+    (6, 6),    # (posetrack18) 6 - RShoulder    - 6 (halpe26)
+    (7, 7),    # (posetrack18) 7 - LElbow       - 7 (halpe26)
+    (8, 8),    # (posetrack18) 8 - RElbow       - 8 (halpe26)
+    (9, 9),    # (posetrack18) 9 - LWrist       - 9 (halpe26)
+    (10, 10),  # (posetrack18) 10 - RWrist      - 10 (halpe26)
+    (11, 11),  # (posetrack18) 11 - LHip        - 11 (halpe26)
+    (12, 12),  # (posetrack18) 12 - RHip        - 12 (halpe26)
+    (13, 13),  # (posetrack18) 13 - LKnee       - 13 (halpe26)
+    (14, 14),  # (posetrack18) 14 - Rknee       - 14 (halpe26)
+    (15, 15),  # (posetrack18) 15 - LAnkle      - 15 (halpe26)
+    (16, 16),  # (posetrack18) 16 - RAnkle      - 16 (halpe26)
+]
+
+def convert_to_posetrack18(halpe26_joints, halpe26_scores):
+    assert len(halpe26_joints) == 26, 'halpe26_joints should have 26 elements'
+    posetrack18_keypoints = np.zeros((17, 3))
+    posetrack18_keypoints[:17, :2] = halpe26_joints[:17, :2]
+    posetrack18_keypoints[:17, 2] = halpe26_scores[:17, 0]
+
+    posetrack18_keypoints[1, :2] = halpe26_joints[18, :2]
+    posetrack18_keypoints[2, :2] = halpe26_joints[17, :2]
+    posetrack18_keypoints[1, 2] = halpe26_scores[18, 0]
+    posetrack18_keypoints[2, 2] = halpe26_scores[17, 0]
+
+    return posetrack18_keypoints
+
+def write_json_mpii(all_results, outputpath, outputfile):
+    pass
 
 def write_json_posetrack18(all_results, outputpath, outputfile):
     categories = []
@@ -742,15 +797,14 @@ def write_json_posetrack18(all_results, outputpath, outputfile):
 
             kp_preds = human['keypoints']
             kp_scores = human['kp_score']
-            pro_scores = human['proposal_score']
-            keypoints = []
-            for n in range(kp_scores.shape[0]):
-                keypoints.append(float(kp_preds[n, 0]))
-                keypoints.append(float(kp_preds[n, 1]))
-                keypoints.append(float(kp_scores[n]))
-            ann['keypoints'] = keypoints
-            ann['scores'] = np.array(kp_scores).reshape(-1).tolist()
-            ann['score'] = float(pro_scores)
+
+            kp_num = kp_scores.shape[0]
+            if kp_num == 26:
+                posetrack18_keypoints = convert_to_posetrack18(kp_preds, kp_scores)
+                
+                ann['keypoints'] = np.asarray(posetrack18_keypoints).reshape(-1).tolist()
+                ann['scores'] = np.array(posetrack18_keypoints[:, 2]).reshape(-1).tolist()
+
             if 'idx' in human.keys():
                 ann['track_id'] = human['idx']
             
@@ -772,8 +826,13 @@ def write_json(all_results, outputpath, form=None, for_eval=False, outputfile='a
     outputpath: output directory
     '''
 
-    if for_eval:
+    if form == 'mpii':
+        write_json_mpii(all_results, outputpath, outputfile)
+    elif form == 'posetrack18':
         write_json_posetrack18(all_results, outputpath, outputfile)
+
+    # if for_eval:
+    #     write_json_posetrack18(all_results, outputpath, outputfile)
 
     json_results = []
     json_results_cmu = {}

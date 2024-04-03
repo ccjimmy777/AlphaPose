@@ -117,7 +117,7 @@ class DataWriter():
                 if self.seq_name != '':
                     outputfile = self.seq_name + '.json'
                 write_json(final_result, self.opt.outputpath, form=self.opt.format, for_eval=self.opt.eval, outputfile=outputfile)
-                print("Results have been written to json.")
+                print("Results have been written to json in {} mode.".format(self.opt.format))
                 return
             # image channel RGB->BGR
             orig_img = np.array(orig_img, dtype=np.uint8)[:, :, ::-1]

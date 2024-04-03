@@ -12,24 +12,30 @@ def orientation_estimate_medow(input_tensor):
     ori = predict_orientation(input_tensor)
     return degree_to_vector(ori)
 
-def orientation_estimate_mywork2d(pose_keypoints_2d, focal_length, cx, cy, isDebug=False):
+def orientation_estimate_mywork2d(pose_keypoints_2d, focal_length, cx, cy, format='halpe26', isDebug=False):
     pose_keypoints_2d = np.asarray(pose_keypoints_2d)
-    # pose_keypoints_2d = pose_keypoints_2d.reshape(-1, 17, 2)
-    # extract left shoulder, right shoulder, left hip, right hip
-    ls_2d = pose_keypoints_2d[5, :]          # left shoulder
-    rs_2d = pose_keypoints_2d[6, :]          # right shoulder
-    lh_2d = pose_keypoints_2d[11, :]         # left hip
-    rh_2d = pose_keypoints_2d[12, :]         # right hip
-    neck_2d = (ls_2d + rs_2d) / 2
-    root_2d = (lh_2d + rh_2d) / 2
+    if format == 'halpe26':
+        assert pose_keypoints_2d.shape[0] == 26, 'halpe26 format should have 26 keypoints'
+        
+        # extract left shoulder, right shoulder, left hip, right hip
+        ls_2d = pose_keypoints_2d[5, :]          # left shoulder
+        rs_2d = pose_keypoints_2d[6, :]          # right shoulder
+        neck_2d = pose_keypoints_2d[18, :]       # neck
+        root_2d = pose_keypoints_2d[19, :]       # hip
+    elif format == 'h36m':
+        assert pose_keypoints_2d.shape[0] == 17, 'h36m format should have 17 keypoints'
+        ls_2d = pose_keypoints_2d[11, :]         # left shoulder
+        rs_2d = pose_keypoints_2d[14, :]         # right shoulder
+        neck_2d = pose_keypoints_2d[8, :]        # thorax
+        root_2d = pose_keypoints_2d[0, :]        # root (pelvis)
 
     K_inv = np.array([[1.0/focal_length, 0, -cx/focal_length], 
                       [0, 1.0/focal_length, -cy/focal_length],
                       [0, 0, 1]])
 
-    lh_neck = np.linalg.norm(lh_2d-neck_2d)
-    rh_neck = np.linalg.norm(rh_2d-neck_2d)
-    theta = lh_neck/(lh_neck + rh_neck)  # 需要放在前面计算
+    ls_neck = np.linalg.norm(ls_2d-neck_2d)
+    rs_neck = np.linalg.norm(rs_2d-neck_2d)
+    theta = ls_neck/(ls_neck + rs_neck)
 
     ls_2d_homo = np.append(ls_2d, 1)
     rs_2d_homo = np.append(rs_2d, 1)
@@ -147,7 +153,7 @@ def degree_to_color(degree, saturation=1, value=1, mode='bgr'):
 
     return color
 
-def draw_orientation(image, center, degree, color=None, thickness=10):
+def draw_orientation(image, center, degree, color=None, thickness=2):
     if color is None:
         color = degree_to_color(degree)
     # color = (int(color[0]), int(color[1]), int(color[2]))

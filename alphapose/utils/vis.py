@@ -58,55 +58,60 @@ def get_smpl_color(idx):
 
     return color
 
-def vis_frame_debug(frame, win_name, track_list=None, isDetect=False, stage=0):
+def vis_frame_debug(frame, win_name, logger, track_list=None, isDetect=False, stage=0, format='halpe26'):
     head_info='stage {}/6'.format(stage)
     cv2.putText(frame, head_info, (10, int(20 + 30*stage)), DEFAULT_FONT, 1, RED, 2)
 
     if track_list is None:
         cv2.imshow(win_name, frame); cv2.waitKey(0)
         return
-    
+
+    logger.debug('============== frame_id: {} === debug info =============='.format(track_list[0].frame_id))
     if isDetect:
         color = GREEN
         for track in track_list:
             kp_preds = track.pose_recover
             kp_scores = np.mean(track.pose_recover_score)
-            kp_preds = np.concatenate((kp_preds, (kp_preds[5:6, :] + kp_preds[6:7, :])/2, (kp_preds[11:12, :] + kp_preds[12:13, :])/2), axis=0)
-            vis_pose_simple(frame, kp_preds, color, track.curr_orient)
+            if format == 'halpe26':
+                vis_pose_simple_halpe26(frame, kp_preds, color, track.curr_orient)
             # tlbr: xmin,ymin,xmax,ymax （和下面函数中的规则不一样！）
             cv2.rectangle(frame, (int(track.tlbr[0]), int(track.tlbr[1])), (int(track.tlbr[2]), int(track.tlbr[3])), color, 2)
             orient_degree = oe.vector_to_degree(track.curr_orient)
-            str = 'orient: {0:.3f} deg'.format(orient_degree)
-            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 70))), DEFAULT_FONT, 0.7, oe.degree_to_color(orient_degree), 2)
-            str = 'orient_score: {0:.3f}'.format(track.curr_orient_score)
-            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 90))), DEFAULT_FONT, 0.7, get_color_orient_score(track.curr_orient_score), 2)
-            str = 'pose_score: {0:.3f}'.format(kp_scores)
-            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 110))), DEFAULT_FONT, 0.7, get_color_orient_score(kp_scores), 2)
-            str = 'det_score: {0:.3f}'.format(track.detscore)
-            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 130))), DEFAULT_FONT, 0.7, get_color_orient_score(track.detscore), 2)
+            info = 'track_id: {}'.format(track.track_id); logger.debug(info)
+            cv2.putText(frame, info, (int(track.tlbr[0]), int((track.tlbr[1] + 20))), DEFAULT_FONT, 0.7, oe.degree_to_color(orient_degree), 2)
+            info = 'orient: {0:.3f} deg'.format(orient_degree); logger.debug(info)
+            # cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 70))), DEFAULT_FONT, 0.7, oe.degree_to_color(orient_degree), 2)
+            info = 'orient_score: {0:.3f}'.format(track.curr_orient_score); logger.debug(info)
+            # cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 90))), DEFAULT_FONT, 0.7, get_color_orient_score(track.curr_orient_score), 2)
+            info = 'pose_score: {0:.3f}'.format(kp_scores); logger.debug(info)
+            # cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 110))), DEFAULT_FONT, 0.7, get_color_orient_score(kp_scores), 2)
+            info = 'det_score: {0:.3f}'.format(track.detscore); logger.debug(info)
+            # cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 130))), DEFAULT_FONT, 0.7, get_color_orient_score(track.detscore), 2)
+            cv2.imshow(win_name, frame); cv2.waitKey(0)
     else:
         for track in track_list:
             color = get_color_fast(track.track_id)
             kp_preds = track.pose_recover
-            # add neck and root
-            kp_preds = np.concatenate((kp_preds, (kp_preds[5:6, :] + kp_preds[6:7, :])/2, (kp_preds[11:12, :] + kp_preds[12:13, :])/2), axis=0)
-            vis_pose_simple(frame, kp_preds, color, track.smooth_orient)
+            # add neck (mid of lshoulder and rshoulder)
+            if format == 'halpe26':
+                vis_pose_simple_halpe26(frame, kp_preds, color, track.smooth_orient)
             cv2.rectangle(frame, (int(track.tlbr[0]), int(track.tlbr[1])), (int(track.tlbr[2]), int(track.tlbr[3])), color, 2)
-            str1 = 'track_id: {0}'.format(track.track_id)
-            cv2.putText(frame, str1, (int(track.tlbr[0]), int((track.tlbr[1] - 10))), DEFAULT_FONT, 1, color, 2)
-            str2 = 'track_score: {0}'.format(track.score)
-            cv2.putText(frame, str2, (int(track.tlbr[0]), int((track.tlbr[1] + 30))), DEFAULT_FONT, 1, color, 2)
+            str = 'track_id: {0}'.format(track.track_id)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] - 10))), DEFAULT_FONT, 1, color, 2)
+            str = 'track_score: {0}'.format(track.score)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 30))), DEFAULT_FONT, 1, color, 2)
             orient_degree = oe.vector_to_degree(track.smooth_orient)
-            str3 = 'orient: {0:.3f} deg'.format(orient_degree)
-            cv2.putText(frame, str3, (int(track.tlbr[0]), int((track.tlbr[1] + 150))), DEFAULT_FONT, 1, oe.degree_to_color(orient_degree), 2)
-            str4 = 'orient_score: {0:.3f}'.format(track.smooth_orient_score)
-            cv2.putText(frame, str4, (int(track.tlbr[0]), int((track.tlbr[1] + 190))), DEFAULT_FONT, 1, get_color_orient_score(track.smooth_orient_score), 2)
+            str = 'orient: {0:.3f} deg'.format(orient_degree)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 150))), DEFAULT_FONT, 1, oe.degree_to_color(orient_degree), 2)
+            str = 'orient_score: {0:.3f}'.format(track.smooth_orient_score)
+            cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 190))), DEFAULT_FONT, 1, get_color_orient_score(track.smooth_orient_score), 2)
             str = 'det_score: {0:.3f}'.format(track.detscore)
             cv2.putText(frame, str, (int(track.tlbr[0]), int((track.tlbr[1] + 230))), DEFAULT_FONT, 1, get_color_orient_score(track.detscore), 2)
+            cv2.imshow(win_name, frame); cv2.waitKey(0)
         
     cv2.imshow(win_name, frame); cv2.waitKey(0)
 
-def vis_pose_simple(img, kp_preds, color, ori2d):
+def vis_pose_simple_coco(img, kp_preds, color, ori2d):
     part_line = {}
     # Draw keypoints
     for n in range(kp_preds.shape[0]):
@@ -141,13 +146,53 @@ def vis_pose_simple(img, kp_preds, color, ori2d):
             end_xy = part_line[end_p]
             cv2.line(img, start_xy, end_xy, color, 5)
 
+def vis_pose_simple_halpe26(img, kp_preds, color, ori2d):
+    kp_num = kp_preds.shape[0]
+    assert kp_num == 26, 'halpe26 keypoint number should be 26'
+    
+    part_line = {}
+    # Draw keypoints
+    for n in range(kp_preds.shape[0]):
+        cor_x, cor_y = int(kp_preds[n][0]), int(kp_preds[n][1])
+        part_line[n] = (cor_x, cor_y)
+
+        # left shoulder in red, right shoulder in yellow, middle (neck) in purple, 
+        # and Hip (root) in green
+        if n == 5:
+            cv2.circle(img, (cor_x, cor_y), 2, RED, -1)
+        elif n == 6:
+            cv2.circle(img, (cor_x, cor_y), 2, YELLOW, -1)
+        elif n == 19:
+            cv2.circle(img, (cor_x, cor_y), 2, GREEN, -1)
+        else:
+            cv2.circle(img, (cor_x, cor_y), 2, color, -1)
+    
+    mid_neck = (kp_preds[5, :] + kp_preds[6, :]) / 2
+    cor_x, cor_y = int(mid_neck[0]), int(mid_neck[1])
+    cv2.circle(img, (cor_x, cor_y), 2, PURPLE, -1)
+    oe.draw_orientation(img, (cor_x, cor_y), oe.vector_to_degree(ori2d), thickness=1)
+        
+    l_pair = [
+        (0, 1), (0, 2), (1, 3), (2, 4),  # Head
+        (5, 18), (6, 18), (5, 7), (7, 9), (6, 8), (8, 10),# Body
+        (17, 18), (18, 19), (19, 11), (19, 12),
+        (11, 13), (12, 14), (13, 15), (14, 16),
+        (20, 24), (21, 25), (23, 25), (22, 24), (15, 24), (16, 25),# Foot
+    ]
+
+    # Draw limbs
+    for i, (start_p, end_p) in enumerate(l_pair):
+        if start_p in part_line and end_p in part_line:
+            start_xy = part_line[start_p]
+            end_xy = part_line[end_p]
+            cv2.line(img, start_xy, end_xy, color, 1)
 
 
 def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
     '''
     frame: frame image
     im_res: im_res of predictions
-    format: coco or mpii
+    format: coco or mpii or posetrack18 or halpe26
 
     return rendered image
     '''
