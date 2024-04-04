@@ -177,7 +177,7 @@ def gate_cost_matrix(kf, cost_matrix, tracks, detections, only_position=False):
         cost_matrix[row, gating_distance > gating_threshold] = np.inf
     return cost_matrix
 
-def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.9):  # 0.98
+def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda_=0.98):  # 0.98
     if cost_matrix.size == 0:
         return cost_matrix
     gating_dim = 2 if only_position else 4
@@ -195,7 +195,11 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         unmatched_detect_using_motion = gating_distance > gating_threshold
         match_num_using_motion = np.sum(~unmatched_detect_using_motion)
 
-        unmatched_detect_using_orient = ori_distance > 0.5
+        # 对检测做最小面积限制
+        bbox_size_mask = np.asarray([(det.tlwh[2] * det.tlwh[3]) > 1024 for det in detections])
+        if np.sum(bbox_size_mask) < len(detections):
+            print('np.sum(bbox_size_mask) < len(detections) !!!')
+        unmatched_detect_using_orient = (ori_distance > 1.0) & bbox_size_mask & (dscores > 0.5)
         if match_num_using_motion <= 1:
             unmatched_detect = unmatched_detect_using_motion
         else:
@@ -209,4 +213,20 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         cost_matrix[row, unmatched_detect] = np.inf
         cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* gating_distance_normalize
         # cost_matrix[row] = np.multiply(cost_matrix[row], dscores) + np.multiply(gating_distance_normalize, (1-dscores))
+    return cost_matrix
+
+def fuse_orientation(cost_matrix, tracks, detections, lambda_, iou_thresh=0.8):  # lambda_ = 0.98
+    if cost_matrix.size == 0:
+        return cost_matrix
+
+    for row, track in enumerate(tracks):
+        ori_distance = orientation_distance_onetrack(track, detections, metric='cosine')
+        # unmatched_detect_using_orient = ori_distance > 1.0
+        unmatched_detect_using_iou = cost_matrix[row] > iou_thresh
+        # unmatched_detect = unmatched_detect_using_orient | unmatched_detect_using_iou
+        unmatched_detect = unmatched_detect_using_iou
+        ori_distance_normalize = ori_distance
+        cost_matrix[row, unmatched_detect] = np.inf
+        cost_matrix[row] = lambda_ * cost_matrix[row] + (1-lambda_)* ori_distance_normalize
+    
     return cost_matrix

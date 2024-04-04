@@ -49,7 +49,7 @@ class STrack(BaseTrack):
         self.smooth_feat = None
         self.update_features(temp_feat)
         self.features = deque([], maxlen=buffer_size)
-        self.alpha = 0.9 
+        self.alpha = 0.7 
         self.pose = pose
         self.detscore = ds.item()
         self.crop_box = crop_box
@@ -58,7 +58,7 @@ class STrack(BaseTrack):
         # added by ccj at 24/3/24
         self.curr_orient = None
         self.smooth_orient = None
-        self.smooth_orient_alpha = 0.5
+        self.smooth_orient_alpha = 0.7  # 0.9
         self.orientations = deque([], maxlen=5)
         self.update_orientations(ori_vec)
     
@@ -336,8 +336,8 @@ class Tracker(object):
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked]
         dists_iou = iou_distance(r_tracked_stracks, detections) 
         # dists_iou = iou_distance_ours(r_tracked_stracks, detections)
-        # dists_iou = fuse_orientation(self.kalman_filter, dists_iou, r_tracked_stracks, detections)
-        matches, u_track, u_detection =linear_assignment(dists_iou, thresh=0.5)  # 0.5
+        dists_iou = fuse_orientation(dists_iou, r_tracked_stracks, detections, lambda_=0.2, iou_thresh=0.8)  # 0.5
+        matches, u_track, u_detection =linear_assignment(dists_iou, thresh=1.0)  # 0.5, 0.8
 
         for itracked, idet in matches:
             track = r_tracked_stracks[itracked]

@@ -385,7 +385,8 @@ def vis_frame_fast(frame, im_res, opt, vis_thres, format='coco'):
             
             cv2.rectangle(img, (int(bbox[0]), int(bbox[2])), (int(bbox[1]), int(bbox[3])), color, 2)
             if opt.tracking:
-                cv2.putText(img, str(human['idx']), (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, BLACK, 2)
+                text = '{}'.format(int(human['idx']))
+                cv2.putText(img, text, (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, color, 2)
                 # cv2.putText(img, str(ori2d), (int(bbox[0]), int((bbox[2] + 26*2))), DEFAULT_FONT, 1, BLACK, 2)
                 # cv2.putText(img, str(ori_score), (int(bbox[0]), int((bbox[2] + 26*3))), DEFAULT_FONT, 1, BLACK, 2)
                 # cv2.putText(img, str(theta), (int(bbox[0]), int((bbox[2] + 26*3))), DEFAULT_FONT, 1, BLACK, 2)
@@ -626,7 +627,8 @@ def vis_frame(frame, im_res, opt, vis_thres, format='coco'):
             # color = get_color_fast(int(abs(human['idx'][0][0])))
             cv2.rectangle(img, (int(bbox[0]), int(bbox[2])), (int(bbox[1]),int(bbox[3])), color, 1)
             if opt.tracking:
-                cv2.putText(img, str(human['idx']), (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, BLACK, 2)
+                text = '{}'.format(int(human['idx']))
+                cv2.putText(img, text, (int(bbox[0]), int((bbox[2] + 26))), DEFAULT_FONT, 1, color, 2)
 
         # Draw keypoints
         for n in range(kp_scores.shape[0]):
