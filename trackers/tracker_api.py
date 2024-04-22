@@ -331,12 +331,12 @@ class Tracker(object):
         #     logger.debug('Removed: {}'.format([track.track_id for track in removed_stracks]))
         #     vis.vis_frame_debug(img, win_name, logger, track_list=activated_starcks, isDetect=False, stage=1.2)
 
-        #Step 2: Second association, with IOU （改动了 iou）
+        #Step 2: Second association, with IOU 
         detections = [detections[i] for i in u_detection]
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state==TrackState.Tracked]
         dists_iou = iou_distance(r_tracked_stracks, detections) 
         # dists_iou = iou_distance_ours(r_tracked_stracks, detections)
-        dists_iou = fuse_orientation(dists_iou, r_tracked_stracks, detections, lambda_=0.2, iou_thresh=0.8)  # 0.5
+        dists_iou = fuse_orientation(dists_iou, r_tracked_stracks, detections, lambda_=0.4, iou_thresh=0.8)  # 0.5
         matches, u_track, u_detection =linear_assignment(dists_iou, thresh=1.0)  # 0.5, 0.8
 
         for itracked, idet in matches:

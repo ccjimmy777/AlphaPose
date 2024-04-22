@@ -8,9 +8,9 @@ from third_party.MEBOW.tools.demo_api import predict_orientation
 # import matplotlib
 # matplotlib.use('TkAgg')
 
-def orientation_estimate_medow(input_tensor):
+def orientation_estimate_medow(input_tensor, save_img=False):
     input_tensor_cpu = input_tensor.cpu()
-    ori = predict_orientation(input_tensor_cpu)
+    ori = predict_orientation(input_tensor_cpu, save_img)
     return degree_to_vector(ori)
 
 def orientation_estimate_mywork2d(pose_keypoints_2d, focal_length, cx, cy, format='halpe26', isDebug=False):

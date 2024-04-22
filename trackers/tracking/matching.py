@@ -203,7 +203,7 @@ def fuse_motion(kf, cost_matrix, tracks, detections, only_position=False, lambda
         if match_num_using_motion <= 1:
             unmatched_detect = unmatched_detect_using_motion
         else:
-            unmatched_detect = unmatched_detect_using_motion | unmatched_detect_using_orient
+            unmatched_detect = unmatched_detect_using_motion # | unmatched_detect_using_orient
 
         # unmatched_detect_for_sure = np.where((gating_distance > gating_threshold) & (ori_distance > 0.5))[0]
 
