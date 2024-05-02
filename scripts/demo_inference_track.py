@@ -60,7 +60,7 @@ parser.add_argument('--showbox', default=False, action='store_true',
 parser.add_argument('--profile', default=False, action='store_true',
                     help='add speed profiling at screen output')
 parser.add_argument('--format', type=str,
-                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open/mpii/posetrack18')  # add mpii and posetrack18
+                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open/mpii/posetrack18/wild')  # add mpii, posetrack18 and wild
 parser.add_argument('--min_box_area', type=int, default=100,  # 100
                     help='min box area to filter out')
 parser.add_argument('--detbatch', type=int, default=3,  # 5
@@ -98,11 +98,11 @@ parser.add_argument('--focal_est', dest='focal_estimation',
 args = parser.parse_args()
 cfg = update_config(args.cfg)
 
-camera_cfg = {
-    'focal': 1000.0,
-    'cx': 960.0,
-    'cy': 540.0
-}
+# camera_cfg = {
+#     'focal': 1000.0,
+#     'cx': 960.0,
+#     'cy': 540.0
+# }
 
 if platform.system() == 'Windows':
     args.sp = True
@@ -117,6 +117,41 @@ if not args.sp:
     torch.multiprocessing.set_start_method('forkserver', force=True)
     torch.multiprocessing.set_sharing_strategy('file_system')
 
+def check_input():
+    # for webcam
+    if args.webcam != -1:
+        args.detbatch = 1
+        return 'webcam', int(args.webcam)
+
+    # for video
+    if len(args.video):
+        if os.path.isfile(args.video):
+            videofile = args.video
+            return 'video', videofile
+        else:
+            raise IOError('Error: --video must refer to a video file, not directory.')
+
+    # for detection results
+    if len(args.detfile):
+        if os.path.isfile(args.detfile):
+            detfile = args.detfile
+            return 'detfile', detfile
+        else:
+            raise IOError('Error: --detfile must refer to a detection json file, not directory.')
+
+    # for images
+    if len(args.inputpath):
+        inputpath = args.inputpath
+
+        if len(inputpath) and inputpath != '/':
+            root, dirs, files = next(os.walk(inputpath))
+            im_names = files
+            im_names = natsort.natsorted(im_names)
+
+        return 'image', im_names  # 后面不使用这里的 im_names
+
+    else:
+        raise NotImplementedError
 
 def print_finish_info():
     print('===========================> Finish Model Running.')
@@ -134,13 +169,14 @@ def loop():
 
 if __name__ == "__main__":
     # Check input
-    inputpath = args.inputpath
-    if len(inputpath) and inputpath != '/':
-        root, dirs, _ = next(os.walk(inputpath))
-        mode = 'image'
-    else:
-        print('An error occurs on arg "inputpath", please check it')
-        sys.exit(-1)
+    mode, input_source = check_input()
+    if mode == 'image':
+        inputpath = args.inputpath
+        if len(inputpath) and inputpath != '/':
+            root, dirs, _ = next(os.walk(inputpath))
+        else:
+            print('An error occurs on arg "inputpath", please check it')
+            sys.exit(-1)
 
     if not os.path.exists(args.outputpath):
         os.makedirs(args.outputpath)
@@ -164,44 +200,50 @@ if __name__ == "__main__":
     # detector = get_detector(args)
     # detector.load_model()
 
-    if len(dirs) > 0:
-        dirs_list = tqdm(dirs, dynamic_ncols=True, desc="val seqs(dirs)") 
-    else:
+    if mode == 'image':
+        if len(dirs) > 0:
+            dirs_list = tqdm(dirs, dynamic_ncols=True, desc="val seqs(dirs)") 
+        else:
+            dirs_list = ['']
+    elif mode == 'video':
         dirs_list = ['']
     
     for dir in dirs_list:
-        args.inputpath = os.path.join(inputpath, dir)
-        _, _, files = next(os.walk(args.inputpath))
-        input_source = natsort.natsorted(files)
+        if mode == 'image':
+            inputpath = os.path.join(inputpath, dir)
+            _, _, files = next(os.walk(inputpath))
+            input_source = natsort.natsorted(files)
 
-        seq_name = dir if dir != '' else root.split('/')[-1]
+            seq_name = dir if dir != '' else root.split('/')[-1]
 
-        # Load wild camera model for focal estimation
-        focal_result_path = '/mnt/d/data/alphapose/results/mywork/focal_estimation/'
-        focal_result_path = os.path.join(focal_result_path, seq_name + '.json')
-        if os.path.exists(focal_result_path):
-            focal = load(focal_result_path)['focal']
-        else:
-            wild_camera_model = load_wild_camera_model()
-            focal_list = []
-            for im_name in tqdm(input_source, dynamic_ncols=True, desc=seq_name+'\'s focal estimation'):
-                intrinsic, _ = wild_camera_model.inference(Image.open(os.path.join(args.inputpath, im_name)), wtassumption=False)
-                focal = intrinsic[0, 0].item()
-                focal_list.append(focal)
-        
-            focal_list_clear, abnormal_indexes = clear_abnormal(focal_list)
-            focal = np.mean(focal_list_clear)
-            focal_info = {}
-            focal_info['focal'] = focal
-            focal_info['focal_list_clear'] = focal_list_clear
-            focal_info['abnormal_indexes'] = abnormal_indexes
-            focal_info['focal_list'] = focal_list
-            dump(focal_info, focal_result_path, sort_keys=True, indent=4)
+            # # Load wild camera model for focal estimation
+            # focal_result_path = '/mnt/d/data/alphapose/results/mywork/focal_estimation/'
+            # focal_result_path = os.path.join(focal_result_path, seq_name + '.json')
+            # if os.path.exists(focal_result_path):
+            #     focal = load(focal_result_path)['focal']
+            # else:
+            #     wild_camera_model = load_wild_camera_model()
+            #     focal_list = []
+            #     for im_name in tqdm(input_source, dynamic_ncols=True, desc=seq_name+'\'s focal estimation'):
+            #         intrinsic, _ = wild_camera_model.inference(Image.open(os.path.join(args.inputpath, im_name)), wtassumption=False)
+            #         focal = intrinsic[0, 0].item()
+            #         focal_list.append(focal)
+            
+            #     focal_list_clear, abnormal_indexes = clear_abnormal(focal_list)
+            #     focal = np.mean(focal_list_clear)
+            #     focal_info = {}
+            #     focal_info['focal'] = focal
+            #     focal_info['focal_list_clear'] = focal_list_clear
+            #     focal_info['abnormal_indexes'] = abnormal_indexes
+            #     focal_info['focal_list'] = focal_list
+            #     dump(focal_info, focal_result_path, sort_keys=True, indent=4)
 
-        if args.focal_estimation:
-            continue
+            # if args.focal_estimation:
+            #     continue
 
-        camera_cfg['focal'] = focal
+            # camera_cfg['focal'] = focal
+        elif mode == 'video':
+            seq_name = os.path.basename(input_source)
         
         # 结果汇总
         seq_result_path = os.path.join(args.outputpath, seq_name + '.json')
@@ -220,7 +262,13 @@ if __name__ == "__main__":
 
         # Init data writer
         queueSize = args.qsize
-        writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize, seq_name=seq_name).start()
+        if mode == 'video':
+            from alphapose.utils.writer import DEFAULT_VIDEO_SAVE_OPT as video_save_opt
+            video_save_opt['savepath'] = os.path.join(args.outputpath, 'AlphaPose_mywork_' + os.path.basename(input_source))
+            video_save_opt.update(det_loader.videoinfo)
+            writer = DataWriter(cfg, args, save_video=True, video_save_opt=video_save_opt, queueSize=queueSize).start()
+        else:
+            writer = DataWriter(cfg, args, save_video=False, queueSize=queueSize, seq_name=seq_name).start()
 
         data_len = det_loader.length
         im_names_desc = tqdm(range(data_len), dynamic_ncols=True)
@@ -265,8 +313,8 @@ if __name__ == "__main__":
                         runtime_profile['pt'].append(pose_time)
                     # iii. Pose Tracking
                     if args.pose_track:
-                        camera_cfg['cx'] = orig_img.shape[1] / 2
-                        camera_cfg['cy'] = orig_img.shape[0] / 2
+                        # camera_cfg['cx'] = orig_img.shape[1] / 2
+                        # camera_cfg['cy'] = orig_img.shape[0] / 2
                         pose_coords = []
                         pose_scores = []
                         for i in range(hm.shape[0]):
@@ -279,10 +327,12 @@ if __name__ == "__main__":
                         boxes, scores, ids, preds_img, preds_scores, pick_ids = \
                             pose_nms(boxes, scores, ids, preds_img, preds_scores, args.min_box_area, use_heatmap_loss=(cfg.DATA_PRESET.get('LOSS_TYPE', 'MSELoss') == 'MSELoss'))
                         inps = inps[pick_ids]; hm = hm[pick_ids]; cropped_boxes = cropped_boxes[pick_ids]
-                        ori_vecs = orientation_estimate_medow(inps)
-                        boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores, ori_vecs)
-                    hm = hm.cpu()
-                    writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
+                        if hm.size(0) > 0:
+                            ori_vecs = orientation_estimate_medow(inps)
+                            boxes,scores,ids,hm,cropped_boxes = track(tracker,args,orig_img,inps,boxes,hm,cropped_boxes,im_name,scores, ori_vecs)
+                    if hm.size(0) > 0:
+                        hm = hm.cpu()
+                        writer.save(boxes, scores, ids, hm, cropped_boxes, orig_img, im_name)
                     if args.profile:
                         ckpt_time, post_time = getTime(ckpt_time)
                         runtime_profile['pn'].append(post_time)

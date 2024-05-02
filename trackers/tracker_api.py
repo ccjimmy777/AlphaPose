@@ -255,6 +255,7 @@ class Tracker(object):
         #     logger.debug('self.frame_id: {}'.format(self.frame_id))
 
         ''' Step 0: Network forward, get human identity embedding''' 
+        assert len(inps) > 0, 'Inps is Empty'
         assert len(inps)==len(bboxs),'Unmatched Length Between Inps and Bboxs'
         assert len(inps)==len(pose),'Unmatched Length Between Inps and Heatmaps'  
         with torch.no_grad():
